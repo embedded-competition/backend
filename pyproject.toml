@@ -53,7 +53,9 @@ known-first-party = ["app"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["app", "tests", "scripts"]
+# migrations도 포함한다 — autogenerate가 커스텀 타입 import를 빠뜨리는 사고를
+# 실행 전에 잡는다 (초기 리비전에서 실제로 발생했다).
+files = ["app", "tests", "scripts", "migrations"]
 
 [[tool.mypy.overrides]]
 # ARM 하드웨어 라이브러리는 타입 스텁이 없다. 개별 지정 — 전역 무시 금지.

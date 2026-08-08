@@ -7,10 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.main import create_app
 
 
@@ -49,3 +53,25 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 def now() -> datetime:
     """고정 시각. 실제 시각에 의존하는 단정을 만들지 않는다."""
     return datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def session(settings: Settings) -> Iterator[Session]:
+    """임시 SQLite + Alembic upgrade head.
+
+    create_all()이 아니라 마이그레이션으로 스키마를 만든다 — 리비전이 깨졌는지도
+    같이 검증된다.
+    """
+    engine = create_db_engine(settings.database_path)
+    alembic_config = Config("alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
+    command.upgrade(alembic_config, "head")
+
+    factory = create_session_factory(engine)
+    db = factory()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
+        engine.dispose()
