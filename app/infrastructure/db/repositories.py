@@ -4,21 +4,32 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.domain.models import Alert, Device, Reading
+from app.domain.models import AccessToken, Alert, Device, Event, PushToken, Reading
 from app.domain.value_objects import DeviceId
 from app.infrastructure.db.mappers import (
     alert_to_domain,
     apply_alert,
     apply_device,
+    apply_event,
+    apply_push_token,
     device_to_domain,
+    event_to_domain,
+    push_token_to_domain,
     reading_to_columns,
     reading_to_domain,
 )
-from app.infrastructure.db.orm import AlertOrm, DeviceOrm, ReadingOrm
+from app.infrastructure.db.orm import (
+    AccessTokenOrm,
+    AlertOrm,
+    DeviceOrm,
+    EventOrm,
+    PushTokenOrm,
+    ReadingOrm,
+)
 
 
 class SqlAlchemyDeviceRepository:
@@ -27,6 +38,14 @@ class SqlAlchemyDeviceRepository:
 
     def get_by_hw_id(self, hw_id: DeviceId) -> Device | None:
         row = self._session.scalar(select(DeviceOrm).where(DeviceOrm.hw_id == str(hw_id)))
+        return device_to_domain(row) if row else None
+
+    def get_by_mac(self, mac: str) -> Device | None:
+        row = self._session.scalar(select(DeviceOrm).where(DeviceOrm.mac == mac))
+        return device_to_domain(row) if row else None
+
+    def get_by_public_id(self, public_id: str) -> Device | None:
+        row = self._session.scalar(select(DeviceOrm).where(DeviceOrm.public_id == public_id))
         return device_to_domain(row) if row else None
 
     def get(self, device_id: int) -> Device | None:
@@ -136,3 +155,99 @@ class SqlAlchemyAlertRepository:
         apply_alert(row, alert)
         self._session.flush()
         return alert_to_domain(row)
+
+
+class SqlAlchemyEventRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, event: Event) -> Event:
+        row = apply_event(EventOrm(), event)
+        self._session.add(row)
+        self._session.flush()
+        return event_to_domain(row)
+
+    def list_since(self, device_id: int, *, since: datetime, limit: int) -> list[Event]:
+        rows = self._session.scalars(
+            select(EventOrm)
+            .where(EventOrm.device_id == device_id, EventOrm.occurred_at >= since)
+            .order_by(EventOrm.occurred_at.desc())
+            .limit(limit)
+        )
+        return [event_to_domain(row) for row in rows]
+
+    def list_in_range(
+        self, device_id: int, *, start: datetime, end: datetime, limit: int
+    ) -> list[Event]:
+        rows = self._session.scalars(
+            select(EventOrm)
+            .where(
+                EventOrm.device_id == device_id,
+                EventOrm.occurred_at >= start,
+                EventOrm.occurred_at <= end,
+            )
+            .order_by(EventOrm.occurred_at)
+            .limit(limit)
+        )
+        return [event_to_domain(row) for row in rows]
+
+
+class SqlAlchemyAccessTokenRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, token: AccessToken) -> AccessToken:
+        row = AccessTokenOrm(
+            device_id=token.device_id,
+            token_hash=token.token_hash,
+            created_at=token.created_at,
+            last_used_at=token.last_used_at,
+        )
+        self._session.add(row)
+        self._session.flush()
+        token.id = row.id
+        return token
+
+    def find_device_id(self, token_hash: str) -> int | None:
+        return self._session.scalar(
+            select(AccessTokenOrm.device_id).where(AccessTokenOrm.token_hash == token_hash)
+        )
+
+    def touch(self, token_hash: str, *, at: datetime) -> None:
+        self._session.execute(
+            update(AccessTokenOrm)
+            .where(AccessTokenOrm.token_hash == token_hash)
+            .values(last_used_at=at)
+        )
+
+
+class SqlAlchemyPushTokenRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def upsert(self, token: PushToken) -> PushToken:
+        """같은 토큰 재등록은 소유 기기만 갱신한다 — 중복 행을 만들지 않는다."""
+        row = self._session.scalar(select(PushTokenOrm).where(PushTokenOrm.token == token.token))
+        if row is None:
+            row = PushTokenOrm()
+            self._session.add(row)
+        apply_push_token(row, token)
+        self._session.flush()
+        return push_token_to_domain(row)
+
+    def list_active(self, device_id: int) -> list[PushToken]:
+        rows = self._session.scalars(
+            select(PushTokenOrm).where(
+                PushTokenOrm.device_id == device_id,
+                PushTokenOrm.is_active.is_(True),
+            )
+        )
+        return [push_token_to_domain(row) for row in rows]
+
+    def save(self, token: PushToken) -> PushToken:
+        row = self._session.get(PushTokenOrm, token.id) if token.id else None
+        if row is None:
+            return self.upsert(token)
+        apply_push_token(row, token)
+        self._session.flush()
+        return push_token_to_domain(row)

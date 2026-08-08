@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
-from app.domain.models import Alert, Device, Reading
+from app.domain.models import Alert, Device, Event, PushToken, Reading
 from app.domain.value_objects import (
     AlertState,
     ChannelReading,
     DeviceId,
+    EventKind,
     GasChannel,
     SignatureFlags,
 )
-from app.infrastructure.db.orm import AlertOrm, DeviceOrm, ReadingOrm
+from app.infrastructure.db.orm import (
+    AlertOrm,
+    DeviceOrm,
+    EventOrm,
+    PushTokenOrm,
+    ReadingOrm,
+)
 
 
 def device_to_domain(row: DeviceOrm) -> Device:
@@ -160,4 +167,48 @@ def apply_alert(row: AlertOrm, alert: Alert) -> AlertOrm:
     row.detected_at = alert.detected_at
     row.acknowledged_at = alert.acknowledged_at
     row.acknowledged_note = alert.acknowledged_note
+    return row
+
+
+def event_to_domain(row: EventOrm) -> Event:
+    return Event(
+        id=row.id,
+        device_id=row.device_id,
+        alert_id=row.alert_id,
+        kind=EventKind(row.kind),
+        occurred_at=row.occurred_at,
+        description=row.description,
+    )
+
+
+def apply_event(row: EventOrm, event: Event) -> EventOrm:
+    row.device_id = event.device_id
+    row.alert_id = event.alert_id
+    row.kind = event.kind.value
+    row.occurred_at = event.occurred_at
+    row.description = event.description
+    return row
+
+
+def push_token_to_domain(row: PushTokenOrm) -> PushToken:
+    return PushToken(
+        id=row.id,
+        device_id=row.device_id,
+        token=row.token,
+        platform=row.platform,
+        registered_at=row.registered_at,
+        last_used_at=row.last_used_at,
+        is_active=row.is_active,
+        deactivated_reason=row.deactivated_reason,
+    )
+
+
+def apply_push_token(row: PushTokenOrm, token: PushToken) -> PushTokenOrm:
+    row.device_id = token.device_id
+    row.token = token.token
+    row.platform = token.platform
+    row.registered_at = token.registered_at
+    row.last_used_at = token.last_used_at
+    row.is_active = token.is_active
+    row.deactivated_reason = token.deactivated_reason
     return row

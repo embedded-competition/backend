@@ -10,6 +10,7 @@ from app.domain.value_objects import (
     AlertState,
     ChannelReading,
     DeviceId,
+    EventKind,
     GasChannel,
     SignatureFlags,
 )
@@ -149,3 +150,52 @@ class Alert:
             raise AlertAlreadyAcknowledged(f"alert {self.id}는 이미 해제됨")
         self.acknowledged_at = _require_aware(at, "at")
         self.acknowledged_note = note
+
+
+@dataclass(slots=True)
+class Event:
+    """기록 탭 항목. description은 서버가 생성한다 (D10)."""
+
+    device_id: int
+    kind: EventKind
+    occurred_at: datetime
+    description: str
+    alert_id: int | None = None
+    id: int | None = None
+
+    def __post_init__(self) -> None:
+        self.occurred_at = _require_aware(self.occurred_at, "occurred_at")
+        if not self.description.strip():
+            raise ValueError("event description은 비어 있을 수 없다")
+        if self.kind is EventKind.STATE_CHANGE and self.alert_id is None:
+            raise ValueError("state_change 이벤트는 alert_id를 가져야 한다")
+
+
+@dataclass(slots=True)
+class AccessToken:
+    """deviceToken. 원문은 발급 순간에만 존재하고 저장되지 않는다 (D9)."""
+
+    device_id: int
+    token_hash: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass(slots=True)
+class PushToken:
+    """Expo 푸시 토큰."""
+
+    device_id: int
+    token: str
+    registered_at: datetime
+    platform: str | None = None
+    last_used_at: datetime | None = None
+    is_active: bool = True
+    deactivated_reason: str | None = None
+    id: int | None = None
+
+    def deactivate(self, reason: str) -> None:
+        """영구 실패(UNREGISTERED 등) 시 호출. 방치하면 실패율이 계속 쌓인다."""
+        self.is_active = False
+        self.deactivated_reason = reason

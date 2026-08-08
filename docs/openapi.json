@@ -6,13 +6,13 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/api/v1/health": {
+    "/health": {
       "get": {
         "tags": [
           "health"
         ],
         "summary": "구성요소별 서비스 상태",
-        "operationId": "health_api_v1_health_get",
+        "operationId": "health_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -26,10 +26,453 @@
           }
         }
       }
+    },
+    "/devices": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "MAC으로 기기 등록 + deviceToken 발급",
+        "operationId": "register_device_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRegisterResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "이미 등록된 MAC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "MAC 형식 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/push-token": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Expo 푸시 토큰 등록 (멱등)",
+        "operationId": "register_push_token_devices__device_id__push_token_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/telemetry/latest": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "현재 상태 조회",
+        "description": "raw 센서값(sraw·mv·baseline)은 포함하지 않는다 — 노드가 판정하고 정규화값만 전송한다. `module.lastSeen`으로 데이터 나이를 확인할 것.",
+        "operationId": "latest_telemetry_devices__device_id__telemetry_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/telemetry/history": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "날짜별 시간당 집계 (통계 탭)",
+        "operationId": "telemetry_history_devices__device_id__telemetry_history_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "조회 날짜 (UTC 기준)",
+              "title": "Date"
+            },
+            "description": "조회 날짜 (UTC 기준)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/events": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "기록(이벤트) 조회",
+        "operationId": "list_events_devices__device_id__events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "이 시각 이후 이벤트 (UTC)",
+              "title": "Since"
+            },
+            "description": "이 시각 이후 이벤트 (UTC)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/fleet-comparison": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "등록된 전체 기기 대비 내 위치",
+        "operationId": "fleet_comparison_devices__device_id__fleet_comparison_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}/alarm/release": {
+      "post": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "경보 해제 요청",
+        "operationId": "release_alarm_devices__device_id__alarm_release_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlarmReleaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmReleaseResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "해제 거부 (사유 비공개)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AlarmReleaseRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "AlarmReleaseRequest"
+      },
+      "AlarmReleaseResponse": {
+        "properties": {
+          "released": {
+            "type": "boolean",
+            "title": "Released"
+          }
+        },
+        "type": "object",
+        "required": [
+          "released"
+        ],
+        "title": "AlarmReleaseResponse"
+      },
+      "AlertState": {
+        "type": "string",
+        "enum": [
+          "WARMUP",
+          "NORMAL",
+          "WATCH",
+          "ALARM",
+          "FAULT"
+        ],
+        "title": "AlertState",
+        "description": "노드가 판정해 올려보내는 상태. 서버는 재판정하지 않는다."
+      },
       "ComponentHealth": {
         "properties": {
           "status": {
@@ -66,6 +509,253 @@
           "disabled"
         ],
         "title": "ComponentStatus"
+      },
+      "DeviceRegisterRequest": {
+        "properties": {
+          "mac": {
+            "type": "string",
+            "maxLength": 17,
+            "minLength": 12,
+            "title": "Mac",
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+            "examples": [
+              "AA:BB:CC:DD:EE:FF"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "mac"
+        ],
+        "title": "DeviceRegisterRequest"
+      },
+      "DeviceRegisterResponse": {
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "title": "Deviceid",
+            "description": "이후 모든 경로에 쓰는 식별자",
+            "examples": [
+              "dev_01h8xzk3q0"
+            ]
+          },
+          "deviceToken": {
+            "type": "string",
+            "title": "Devicetoken",
+            "description": "Authorization: Bearer 에 쓴다. 만료 없음. 재조회 불가 — 앱이 저장해야 한다",
+            "examples": [
+              "dtk_9f8e7d6c5b4a"
+            ]
+          },
+          "managementPhone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managementphone",
+            "description": "등록 위치 관리실 전화번호. 경보 화면 버튼에 사용",
+            "examples": [
+              "01029015899"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "deviceId",
+          "deviceToken"
+        ],
+        "title": "DeviceRegisterResponse"
+      },
+      "EnvResponse": {
+        "properties": {
+          "tempC": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tempc"
+          },
+          "rh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rh",
+            "description": "상대습도 %"
+          },
+          "dRhDt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drhdt",
+            "description": "습도 변화율 %RH/min. 습도 게이트 근거"
+          }
+        },
+        "type": "object",
+        "title": "EnvResponse"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "requestId": {
+            "type": "string",
+            "title": "Requestid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "requestId"
+        ],
+        "title": "ErrorResponse",
+        "description": "전 endpoint 단일 에러 형식 (앱 api-spec.md §공통 에러).\n\n앱은 `error` 키만 읽는다. `requestId`는 서버 로그 대조용 부가 정보라\n추가해도 앱 계약이 깨지지 않는다."
+      },
+      "EventListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EventListResponse"
+      },
+      "EventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "examples": [
+              "evt_1"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "timestamp",
+          "kind",
+          "description"
+        ],
+        "title": "EventResponse"
+      },
+      "FleetComparisonResponse": {
+        "properties": {
+          "fleetSize": {
+            "type": "integer",
+            "title": "Fleetsize"
+          },
+          "fleetAvgLevel": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "myLevel": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "myMultiplier": {
+            "type": "number",
+            "title": "Mymultiplier",
+            "description": "전체 평균 심각도 대비 내 배수",
+            "examples": [
+              8.0
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "fleetSize",
+          "fleetAvgLevel",
+          "myLevel",
+          "myMultiplier"
+        ],
+        "title": "FleetComparisonResponse"
+      },
+      "GasChannelResponse": {
+        "properties": {
+          "devZ": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Devz",
+            "description": "baseline 대비 z-score. 가스 방향이 양수",
+            "examples": [
+              3.1
+            ]
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope",
+            "description": "dev 변화율 (z/min)",
+            "examples": [
+              2.4
+            ]
+          }
+        },
+        "type": "object",
+        "title": "GasChannelResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
       },
       "HealthResponse": {
         "properties": {
@@ -113,6 +803,456 @@
         ],
         "title": "HealthResponse",
         "description": "구성요소별로 나눠 반환한다 — 무선 두절이 200 OK로 보이면 안 된다."
+      },
+      "HistoryEventResponse": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "examples": [
+              "14:32"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "description"
+        ],
+        "title": "HistoryEventResponse"
+      },
+      "HistoryResponse": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/HourlySampleResponse"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEventResponse"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "samples",
+          "events"
+        ],
+        "title": "HistoryResponse"
+      },
+      "HourlySampleResponse": {
+        "properties": {
+          "hour": {
+            "type": "string",
+            "title": "Hour",
+            "examples": [
+              "14:00"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "gas": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "h2": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "co": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "tempC": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tempc"
+          },
+          "rh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rh"
+          },
+          "presDev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presdev"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hour",
+          "state",
+          "gas",
+          "h2",
+          "co"
+        ],
+        "title": "HourlySampleResponse"
+      },
+      "LocationResponse": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "title": "LocationResponse"
+      },
+      "ModuleResponse": {
+        "properties": {
+          "nodeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodeid",
+            "examples": [
+              "44bd8d239c28"
+            ]
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "battMv": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battmv",
+            "description": "노드 배터리 전압 mV"
+          },
+          "rssi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rssi",
+            "description": "수신 세기 dBm",
+            "examples": [
+              -74
+            ]
+          },
+          "snr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snr"
+          },
+          "lastSeen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseen",
+            "description": "마지막 프레임 수신 시각(UTC). 폴링 주기보다 갱신이 느리므로 앱은 이 값으로 데이터 나이를 표시해야 한다"
+          }
+        },
+        "type": "object",
+        "title": "ModuleResponse"
+      },
+      "PressureResponse": {
+        "properties": {
+          "presDev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presdev"
+          },
+          "presRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presrate"
+          }
+        },
+        "type": "object",
+        "title": "PressureResponse"
+      },
+      "PushTokenRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Token",
+            "description": "Expo 푸시 토큰",
+            "examples": [
+              "ExponentPushToken[xxxxxxx]"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "PushTokenRequest"
+      },
+      "PushTokenResponse": {
+        "properties": {
+          "registered": {
+            "type": "boolean",
+            "title": "Registered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "registered"
+        ],
+        "title": "PushTokenResponse"
+      },
+      "SignatureResponse": {
+        "properties": {
+          "rise": {
+            "type": "boolean",
+            "title": "Rise"
+          },
+          "hold": {
+            "type": "boolean",
+            "title": "Hold"
+          },
+          "noRecover": {
+            "type": "boolean",
+            "title": "Norecover"
+          },
+          "holdS": {
+            "type": "integer",
+            "title": "Holds",
+            "description": "시그니처 지속 초",
+            "examples": [
+              18
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "rise",
+          "hold",
+          "noRecover",
+          "holdS"
+        ],
+        "title": "SignatureResponse",
+        "description": "판단 근거 3요소. 노드가 계산해 전송한다."
+      },
+      "TelemetryResponse": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "latched": {
+            "type": "boolean",
+            "title": "Latched",
+            "description": "ALARM latch 유지 여부. 자동 해제 없음",
+            "default": false
+          },
+          "gas": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "h2": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "co": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GasChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "env": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pressure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PressureResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "water": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignatureResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "module": {
+            "$ref": "#/components/schemas/ModuleResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "gas",
+          "h2",
+          "module"
+        ],
+        "title": "TelemetryResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
       }
     }
   }

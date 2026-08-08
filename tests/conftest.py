@@ -26,13 +26,29 @@ def settings(tmp_path: Path) -> Settings:
         database_path=tmp_path / "test.db",
         lora_source="fake",
         fcm_credentials_path=None,
+        management_phone="01029015899",
     )
 
 
 @pytest.fixture
-def app(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Iterator[FastAPI]:
+def migrated_db(settings: Settings) -> None:
+    """스키마를 Alembic으로 만든다.
+
+    create_all()을 쓰지 않는 이유 — 리비전이 깨졌는지도 같이 검증하기 위해서다.
+    app·session 양쪽이 이 fixture에 의존해야 어느 쪽을 먼저 잡아도 테이블이 있다.
+    """
+    alembic_config = Config("alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
+    command.upgrade(alembic_config, "head")
+
+
+@pytest.fixture
+def app(
+    settings: Settings, migrated_db: None, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[FastAPI]:
     # lifespan이 get_settings()를 부르므로 캐시된 설정을 테스트용으로 바꾼다.
     monkeypatch.setattr("app.main.get_settings", lambda: settings)
+    monkeypatch.setattr("app.api.deps.get_settings", lambda: settings)
     application = create_app(settings)
     yield application
     application.dependency_overrides.clear()  # 정리 누락은 다음 테스트를 오염시킨다
@@ -56,17 +72,9 @@ def now() -> datetime:
 
 
 @pytest.fixture
-def session(settings: Settings) -> Iterator[Session]:
-    """임시 SQLite + Alembic upgrade head.
-
-    create_all()이 아니라 마이그레이션으로 스키마를 만든다 — 리비전이 깨졌는지도
-    같이 검증된다.
-    """
+def session(settings: Settings, migrated_db: None) -> Iterator[Session]:
+    """테스트가 직접 쓰는 세션. 앱이 쓰는 세션과 같은 DB 파일을 본다."""
     engine = create_db_engine(settings.database_path)
-    alembic_config = Config("alembic.ini")
-    alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
-    command.upgrade(alembic_config, "head")
-
     factory = create_session_factory(engine)
     db = factory()
     try:

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     lora_preamble_length: int = 8
     lora_sync_word: int = 0x12
 
+    # --- 운영 정보 -----------------------------------------------------
+    # 등록 시 앱에 내려주는 관리실 번호. 앱에 하드코딩하지 않기 위해 서버가 소유한다.
+    management_phone: str | None = None
+
     # --- 노드 생존 판정 -----------------------------------------------
     # 펌웨어 확정 시 조정. 스키마는 이 값에 무관하다.
     heartbeat_interval_s: int = 300

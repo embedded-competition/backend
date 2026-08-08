@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.exception_handlers import register_exception_handlers
-from app.api.v1 import health
+from app.api.routes import alerts, devices, health, telemetry
 from app.core.config import Settings, get_settings
 from app.infrastructure.db.session import create_db_engine, create_session_factory
 
@@ -75,7 +75,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     register_exception_handlers(app)
-    app.include_router(health.router, prefix="/api/v1")
+    # 앱 계약에 버전 prefix가 없다 (api-contract-reconciliation.md A1)
+    app.include_router(health.router)
+    app.include_router(devices.router)
+    app.include_router(telemetry.router)
+    app.include_router(alerts.router)
     return app
 
 

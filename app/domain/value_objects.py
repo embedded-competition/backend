@@ -57,6 +57,15 @@ class DeviceId:
         return self.value
 
 
+class EventKind(StrEnum):
+    """기록 탭 항목 종류 (앱 interface.md §4)."""
+
+    STATE_CHANGE = "state_change"
+    ACTION = "action"
+    SUPPRESSED = "suppressed"
+    """오경보 차단 기록 — 습도 게이트 등으로 승격을 보류한 사실."""
+
+
 @dataclass(frozen=True, slots=True)
 class SignatureFlags:
     """판단 근거 3요소. 노드가 계산해 전송한다 (정합화 B1).
