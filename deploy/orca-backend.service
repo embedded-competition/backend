@@ -1,0 +1,40 @@
+# Raspberry Pi Zero 2W용 systemd unit.
+# 설치: sudo cp deploy/orca-backend.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now orca-backend
+#
+# 이 파일이 SSOT다. Pi에서 직접 편집한 내용은 다음 배포에 덮인다.
+
+[Unit]
+Description=Orca EV battery fire detection backend
+# FCM 발송에 네트워크가 필요하다.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orca
+Group=orca
+# SPI·GPIO 접근은 그룹 권한으로 해결한다. root로 실행하지 않는다.
+SupplementaryGroups=spi gpio
+
+WorkingDirectory=/home/orca/backend
+EnvironmentFile=/home/orca/backend/.env
+
+# uv가 lock에 고정된 버전으로 실행한다. --frozen 없이 띄우지 않는다.
+ExecStart=/home/orca/.local/bin/uv run --frozen \
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+Restart=always
+RestartSec=5
+
+# 512MB 중 상한. 누수 시 OOM killer가 시스템 전체 대신 이 서비스만 잡게 한다.
+# 배포 후 `ps -o rss=`로 실측하고 2배 수준으로 조정한다.
+MemoryMax=220M
+
+# 파일 로그를 직접 쓰지 않는다 — SD카드 수명.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orca-backend
+
+[Install]
+WantedBy=multi-user.target

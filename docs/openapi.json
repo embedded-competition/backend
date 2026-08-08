@@ -1,0 +1,119 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Orca Backend",
+    "description": "EV 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "구성요소별 서비스 상태",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ComponentHealth": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ComponentStatus"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "비정상일 때 원인 요약",
+            "examples": [
+              "last frame 22m ago"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth"
+      },
+      "ComponentStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "degraded",
+          "failed",
+          "disabled"
+        ],
+        "title": "ComponentStatus"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ComponentStatus",
+            "description": "구성요소 중 최악값"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "앱 버전",
+            "examples": [
+              "0.1.0"
+            ]
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision",
+            "description": "적용된 Alembic 리비전",
+            "examples": [
+              "a1b2c3d4e5f6"
+            ]
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentHealth"
+            },
+            "type": "object",
+            "title": "Components",
+            "description": "process·database·lora_radio·push"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "components"
+        ],
+        "title": "HealthResponse",
+        "description": "구성요소별로 나눠 반환한다 — 무선 두절이 200 OK로 보이면 안 된다."
+      }
+    }
+  }
+}
