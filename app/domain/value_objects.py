@@ -58,6 +58,24 @@ class DeviceId:
 
 
 @dataclass(frozen=True, slots=True)
+class SignatureFlags:
+    """판단 근거 3요소. 노드가 계산해 전송한다 (정합화 B1).
+
+    급변(rise) + 지속(hold) + 무회복(no_recover)이 모두 참일 때만 시그니처 성립
+    (gas-detection-algorithm-design.md P5 — 크기 단독 판정 금지).
+    """
+
+    rise: bool
+    hold: bool
+    no_recover: bool
+    hold_s: int
+
+    @property
+    def is_complete(self) -> bool:
+        return self.rise and self.hold and self.no_recover
+
+
+@dataclass(frozen=True, slots=True)
 class ChannelReading:
     """가스 채널 1개의 정규화 측정값. raw는 저장하지 않는다 (docs/db-schema.md D3)."""
 

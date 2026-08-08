@@ -9,7 +9,13 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.domain.models import Alert, Device, Reading
-from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasChannel
+from app.domain.value_objects import (
+    AlertState,
+    ChannelReading,
+    DeviceId,
+    GasChannel,
+    SignatureFlags,
+)
 from app.infrastructure.db.repositories import (
     SqlAlchemyAlertRepository,
     SqlAlchemyDeviceRepository,
@@ -34,7 +40,15 @@ def alerts(session: Session) -> SqlAlchemyAlertRepository:
 
 @pytest.fixture
 def saved_device(devices: SqlAlchemyDeviceRepository, now: datetime) -> Iterator[Device]:
-    yield devices.save(Device(hw_id=DeviceId("44bd8d239c28"), label="1호차", registered_at=now))
+    yield devices.save(
+        Device(
+            public_id="dev_test0001",
+            mac="44:BD:8D:23:9C:28",
+            hw_id=DeviceId("44bd8d239c28"),
+            label="1호차",
+            registered_at=now,
+        )
+    )
 
 
 def _reading(device_id: int, now: datetime, **kwargs: object) -> Reading:
@@ -208,3 +222,66 @@ class TestAlertRepository:
         assert reloaded.is_active is False
         assert reloaded.acknowledged_note == "현장 확인"
         assert reloaded.acknowledged_at == (now + timedelta(minutes=3)).astimezone(UTC)
+
+
+class TestAppContractFields:
+    """앱 계약(api-contract-reconciliation.md)으로 추가된 필드 왕복 검증."""
+
+    def test_signature_roundtrip(
+        self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
+    ) -> None:
+        readings.add_if_absent(
+            _reading(
+                saved_device.id or 0,
+                now,
+                signature=SignatureFlags(rise=True, hold=False, no_recover=True, hold_s=18),
+            )
+        )
+
+        stored = readings.latest(saved_device.id or 0)
+
+        assert stored is not None
+        assert stored.signature is not None
+        assert stored.signature.hold_s == 18
+        # 3요소 중 hold가 빠지면 시그니처 미성립 (알고리즘 P5)
+        assert stored.signature.is_complete is False
+
+    def test_signature_absent_stays_none(
+        self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
+    ) -> None:
+        """노드가 signature를 안 보낸 경우와 '전부 false'를 구분해야 한다."""
+        readings.add_if_absent(_reading(saved_device.id or 0, now))
+
+        stored = readings.latest(saved_device.id or 0)
+
+        assert stored is not None
+        assert stored.signature is None
+
+    def test_gps_and_batt_roundtrip(
+        self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
+    ) -> None:
+        readings.add_if_absent(
+            _reading(saved_device.id or 0, now, lat=37.5573, lon=127.0329, batt_mv=3960)
+        )
+
+        stored = readings.latest(saved_device.id or 0)
+
+        assert stored is not None
+        assert stored.lat == pytest.approx(37.5573)
+        assert stored.batt_mv == 3960
+
+    def test_gps_missing_is_null_not_zero(
+        self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
+    ) -> None:
+        """GPS 미장착(정합화 C2)을 좌표 0,0으로 뭉개지 않는다."""
+        readings.add_if_absent(_reading(saved_device.id or 0, now))
+
+        stored = readings.latest(saved_device.id or 0)
+
+        assert stored is not None
+        assert stored.lat is None
+        assert stored.lon is None
+
+    def test_out_of_range_coordinates_rejected(self, saved_device: Device, now: datetime) -> None:
+        with pytest.raises(ValueError, match="lat 범위"):
+            _reading(saved_device.id or 0, now, lat=91.0)

@@ -30,9 +30,15 @@ class DeviceOrm(Base):
     __tablename__ = "devices"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    hw_id: Mapped[str] = mapped_column(String(32), unique=True)
+    # 앱 노출 식별자. 내부 FK는 INTEGER 유지 (D8)
+    public_id: Mapped[str] = mapped_column(String(32), unique=True)
+    mac: Mapped[str] = mapped_column(String(17), unique=True)
+    # 등록 시점엔 노드가 아직 프레임을 안 보냈을 수 있다
+    hw_id: Mapped[str | None] = mapped_column(String(32), unique=True, default=None)
     label: Mapped[str] = mapped_column(String(64))
     parking_slot: Mapped[str | None] = mapped_column(String(32), default=None)
+    # 앱 "관리실 전화" 버튼이 쓴다 — 앱에 하드코딩하지 않는다
+    management_phone: Mapped[str | None] = mapped_column(String(32), default=None)
     firmware_version: Mapped[str | None] = mapped_column(String(32), default=None)
     frame_version: Mapped[int | None] = mapped_column(default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -71,6 +77,7 @@ class ReadingOrm(Base):
     received_at: Mapped[datetime] = mapped_column(UtcDateTime)
     frame_version: Mapped[int]
     state: Mapped[str] = mapped_column(String(8))
+    latched: Mapped[bool | None] = mapped_column(default=None)
 
     # 가스 채널: 정규화 + 변화율만. raw 미저장 (D3)
     voc_dev: Mapped[float | None] = mapped_column(default=None)
@@ -80,11 +87,25 @@ class ReadingOrm(Base):
     co_dev: Mapped[float | None] = mapped_column(default=None)
     co_slope: Mapped[float | None] = mapped_column(default=None)
 
+    # signature 3요소 — 노드가 계산해 전송 (정합화 B1)
+    sig_rise: Mapped[bool | None] = mapped_column(default=None)
+    sig_hold: Mapped[bool | None] = mapped_column(default=None)
+    sig_no_recover: Mapped[bool | None] = mapped_column(default=None)
+    sig_hold_s: Mapped[int | None] = mapped_column(default=None)
+
     # 환경·구조 채널
     temp_c: Mapped[float | None] = mapped_column(default=None)
     humidity_pct: Mapped[float | None] = mapped_column(default=None)
-    pressure_hpa: Mapped[float | None] = mapped_column(default=None)
-    water_level_mm: Mapped[float | None] = mapped_column(default=None)
+    d_rh_dt: Mapped[float | None] = mapped_column(default=None)
+    pressure_dev: Mapped[float | None] = mapped_column(default=None)
+    pressure_rate: Mapped[float | None] = mapped_column(default=None)
+    water: Mapped[bool | None] = mapped_column(default=None)
+
+    # 노드 상태
+    batt_mv: Mapped[int | None] = mapped_column(default=None)
+    # GPS 미장착이면 NULL — 하드웨어 결정과 무관하게 스키마 고정 (정합화 C2)
+    lat: Mapped[float | None] = mapped_column(default=None)
+    lon: Mapped[float | None] = mapped_column(default=None)
 
     # 통신 품질 — 유실 원인 추적의 유일한 지표
     rssi: Mapped[int | None] = mapped_column(default=None)
@@ -116,15 +137,34 @@ class AlertOrm(Base):
     acknowledged_note: Mapped[str | None] = mapped_column(String(255), default=None)
 
 
-class DeviceTokenOrm(Base):
-    """앱 푸시 토큰. 재등록이 중복 행을 만들지 않게 unique."""
+class AccessTokenOrm(Base):
+    """deviceToken 해시 (D9). 원문을 저장하지 않는다."""
 
-    __tablename__ = "device_tokens"
-    __table_args__ = (CheckConstraint("platform IN ('android','ios')", name="ck_tokens_platform"),)
+    __tablename__ = "access_tokens"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+
+class PushTokenOrm(Base):
+    """Expo 푸시 토큰. 재등록이 중복 행을 만들지 않게 unique."""
+
+    __tablename__ = "push_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "platform IS NULL OR platform IN ('android','ios')",
+            name="ck_push_tokens_platform",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"))
     token: Mapped[str] = mapped_column(String(255), unique=True)
-    platform: Mapped[str] = mapped_column(String(8))
+    # Expo가 플랫폼을 흡수하므로 필수 아님
+    platform: Mapped[str | None] = mapped_column(String(8), default=None)
     registered_at: Mapped[datetime] = mapped_column(UtcDateTime)
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -145,8 +185,26 @@ class PushDeliveryOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id"))
-    token_id: Mapped[int] = mapped_column(ForeignKey("device_tokens.id"))
+    token_id: Mapped[int] = mapped_column(ForeignKey("push_tokens.id"))
     attempt: Mapped[int]
     status: Mapped[str] = mapped_column(String(20))
     error_code: Mapped[str | None] = mapped_column(String(64), default=None)
     sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+
+
+class EventOrm(Base):
+    """기록 탭 서술 로그 (D10). description은 서버가 생성한다."""
+
+    __tablename__ = "events"
+    __table_args__ = (
+        Index("ix_events_device_time", "device_id", "occurred_at"),
+        CheckConstraint("kind IN ('state_change','action','suppressed')", name="ck_events_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"))
+    # kind=state_change일 때만 채워진다
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), default=None)
+    kind: Mapped[str] = mapped_column(String(16))
+    occurred_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    description: Mapped[str] = mapped_column(String(255))

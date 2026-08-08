@@ -12,7 +12,12 @@ from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasCh
 
 
 def _device(**kwargs: object) -> Device:
-    defaults: dict[str, object] = {"hw_id": DeviceId("44bd8d239c28"), "label": "1호차"}
+    defaults: dict[str, object] = {
+        "public_id": "dev_test0001",
+        "mac": "44:BD:8D:23:9C:28",
+        "hw_id": DeviceId("44bd8d239c28"),
+        "label": "1호차",
+    }
     defaults.update(kwargs)
     return Device(**defaults)  # type: ignore[arg-type]
 

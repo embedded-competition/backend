@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.domain.exceptions import AlertAlreadyAcknowledged
-from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasChannel
+from app.domain.value_objects import (
+    AlertState,
+    ChannelReading,
+    DeviceId,
+    GasChannel,
+    SignatureFlags,
+)
 
 
 def _require_aware(value: datetime, name: str) -> datetime:
@@ -20,9 +26,13 @@ def _require_aware(value: datetime, name: str) -> datetime:
 class Device:
     """노드 1개 = 차량 1대 (docs/db-schema.md)."""
 
-    hw_id: DeviceId
+    public_id: str
+    mac: str
     label: str
+    # 앱이 MAC으로 먼저 등록하고, 노드 첫 프레임에서 hw_id가 채워진다
+    hw_id: DeviceId | None = None
     parking_slot: str | None = None
+    management_phone: str | None = None
     firmware_version: str | None = None
     frame_version: int | None = None
     is_active: bool = True
@@ -70,11 +80,18 @@ class Reading:
     received_at: datetime
     frame_version: int
     state: AlertState
+    latched: bool | None = None
     channels: tuple[ChannelReading, ...] = ()
+    signature: SignatureFlags | None = None
     temp_c: float | None = None
     humidity_pct: float | None = None
-    pressure_hpa: float | None = None
-    water_level_mm: float | None = None
+    d_rh_dt: float | None = None
+    pressure_dev: float | None = None
+    pressure_rate: float | None = None
+    water: bool | None = None
+    batt_mv: int | None = None
+    lat: float | None = None
+    lon: float | None = None
     rssi: int | None = None
     snr: float | None = None
     id: int | None = None
@@ -88,6 +105,10 @@ class Reading:
             raise ValueError(f"temp_c 범위 이탈: {self.temp_c}")
         if self.rssi is not None and self.rssi > 0:
             raise ValueError(f"rssi는 0 이하여야 한다: {self.rssi}")
+        if self.lat is not None and not -90.0 <= self.lat <= 90.0:
+            raise ValueError(f"lat 범위 이탈: {self.lat}")
+        if self.lon is not None and not -180.0 <= self.lon <= 180.0:
+            raise ValueError(f"lon 범위 이탈: {self.lon}")
 
     @property
     def clock_skew_s(self) -> float:

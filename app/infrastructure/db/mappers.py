@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 from app.domain.models import Alert, Device, Reading
-from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasChannel
+from app.domain.value_objects import (
+    AlertState,
+    ChannelReading,
+    DeviceId,
+    GasChannel,
+    SignatureFlags,
+)
 from app.infrastructure.db.orm import AlertOrm, DeviceOrm, ReadingOrm
 
 
 def device_to_domain(row: DeviceOrm) -> Device:
     return Device(
         id=row.id,
-        hw_id=DeviceId(row.hw_id),
+        public_id=row.public_id,
+        mac=row.mac,
+        hw_id=DeviceId(row.hw_id) if row.hw_id else None,
         label=row.label,
         parking_slot=row.parking_slot,
+        management_phone=row.management_phone,
         firmware_version=row.firmware_version,
         frame_version=row.frame_version,
         is_active=row.is_active,
@@ -24,9 +33,12 @@ def device_to_domain(row: DeviceOrm) -> Device:
 
 
 def apply_device(row: DeviceOrm, device: Device) -> DeviceOrm:
-    row.hw_id = str(device.hw_id)
+    row.public_id = device.public_id
+    row.mac = device.mac
+    row.hw_id = str(device.hw_id) if device.hw_id else None
     row.label = device.label
     row.parking_slot = device.parking_slot
+    row.management_phone = device.management_phone
     row.firmware_version = device.firmware_version
     row.frame_version = device.frame_version
     row.is_active = device.is_active
@@ -57,13 +69,32 @@ def reading_to_domain(row: ReadingOrm) -> Reading:
         received_at=row.received_at,
         frame_version=row.frame_version,
         state=AlertState(row.state),
+        latched=row.latched,
         channels=channels,
+        signature=_signature_to_domain(row),
         temp_c=row.temp_c,
         humidity_pct=row.humidity_pct,
-        pressure_hpa=row.pressure_hpa,
-        water_level_mm=row.water_level_mm,
+        d_rh_dt=row.d_rh_dt,
+        pressure_dev=row.pressure_dev,
+        pressure_rate=row.pressure_rate,
+        water=row.water,
+        batt_mv=row.batt_mv,
+        lat=row.lat,
+        lon=row.lon,
         rssi=row.rssi,
         snr=row.snr,
+    )
+
+
+def _signature_to_domain(row: ReadingOrm) -> SignatureFlags | None:
+    """플래그가 하나도 없으면 노드가 signature를 안 보낸 것 — None으로 구분한다."""
+    if row.sig_rise is None and row.sig_hold is None and row.sig_no_recover is None:
+        return None
+    return SignatureFlags(
+        rise=bool(row.sig_rise),
+        hold=bool(row.sig_hold),
+        no_recover=bool(row.sig_no_recover),
+        hold_s=row.sig_hold_s or 0,
     )
 
 
@@ -76,12 +107,22 @@ def reading_to_columns(reading: Reading) -> dict[str, object]:
         "received_at": reading.received_at,
         "frame_version": reading.frame_version,
         "state": reading.state.value,
+        "latched": reading.latched,
         "temp_c": reading.temp_c,
         "humidity_pct": reading.humidity_pct,
-        "pressure_hpa": reading.pressure_hpa,
-        "water_level_mm": reading.water_level_mm,
+        "d_rh_dt": reading.d_rh_dt,
+        "pressure_dev": reading.pressure_dev,
+        "pressure_rate": reading.pressure_rate,
+        "water": reading.water,
+        "batt_mv": reading.batt_mv,
+        "lat": reading.lat,
+        "lon": reading.lon,
         "rssi": reading.rssi,
         "snr": reading.snr,
+        "sig_rise": reading.signature.rise if reading.signature else None,
+        "sig_hold": reading.signature.hold if reading.signature else None,
+        "sig_no_recover": reading.signature.no_recover if reading.signature else None,
+        "sig_hold_s": reading.signature.hold_s if reading.signature else None,
         "voc_dev": None,
         "voc_slope": None,
         "h2_dev": None,
