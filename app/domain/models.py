@@ -199,3 +199,16 @@ class PushToken:
         """영구 실패(UNREGISTERED 등) 시 호출. 방치하면 실패율이 계속 쌓인다."""
         self.is_active = False
         self.deactivated_reason = reason
+
+
+@dataclass(slots=True)
+class PushDelivery:
+    """발송 시도 1건. 실패 원인 추적의 근거다."""
+
+    alert_id: int
+    token: str
+    attempt: int
+    status: str
+    error_code: str | None = None
+    sent_at: datetime | None = None
+    id: int | None = None

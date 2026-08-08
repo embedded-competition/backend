@@ -1,0 +1,52 @@
+"""서비스 조립(wiring). 구현체를 Protocol에 꽂는 유일한 지점 중 하나."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends
+
+from app.api.deps import SessionDep, SettingsDep
+from app.core.alert_service import AlertService
+from app.core.device_service import DeviceService
+from app.core.telemetry_service import TelemetryService
+from app.infrastructure.clock import SystemClock
+from app.infrastructure.db.repositories import (
+    SqlAlchemyAccessTokenRepository,
+    SqlAlchemyAlertRepository,
+    SqlAlchemyDeviceRepository,
+    SqlAlchemyEventRepository,
+    SqlAlchemyPushTokenRepository,
+    SqlAlchemyReadingRepository,
+)
+
+
+def device_service_dep(session: SessionDep, settings: SettingsDep) -> DeviceService:
+    return DeviceService(
+        devices=SqlAlchemyDeviceRepository(session),
+        access_tokens=SqlAlchemyAccessTokenRepository(session),
+        push_tokens=SqlAlchemyPushTokenRepository(session),
+        clock=SystemClock(),
+        default_management_phone=settings.management_phone,
+    )
+
+
+def telemetry_service_dep(session: SessionDep) -> TelemetryService:
+    return TelemetryService(
+        devices=SqlAlchemyDeviceRepository(session),
+        readings=SqlAlchemyReadingRepository(session),
+        events=SqlAlchemyEventRepository(session),
+    )
+
+
+def alert_service_dep(session: SessionDep) -> AlertService:
+    return AlertService(
+        alerts=SqlAlchemyAlertRepository(session),
+        events=SqlAlchemyEventRepository(session),
+        clock=SystemClock(),
+    )
+
+
+DeviceServiceDep = Annotated[DeviceService, Depends(device_service_dep)]
+TelemetryServiceDep = Annotated[TelemetryService, Depends(telemetry_service_dep)]
+AlertServiceDep = Annotated[AlertService, Depends(alert_service_dep)]

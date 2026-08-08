@@ -25,6 +25,7 @@ async def test_lora_disabled_when_receiver_not_running(client: AsyncClient) -> N
     body = (await client.get("/health")).json()
 
     assert body["components"]["lora_radio"]["status"] == "disabled"
+    assert "미가동" in body["components"]["lora_radio"]["detail"]
 
 
 async def test_push_disabled_without_credentials(client: AsyncClient) -> None:

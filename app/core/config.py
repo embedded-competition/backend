@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # --- LoRa (SX1276 SPI) --------------------------------------------
     # 노드 펌웨어와 값이 하나라도 어긋나면 수신 0이 된다.
     # 기준값은 docs/lora-frame.md와 함께 관리한다.
+    # 수신 task 자체를 끌 수 있게 한다 — API만 띄우는 환경·테스트용
+    lora_enabled: bool = True
     lora_source: LoraSource = "fake"
     lora_spi_bus: int = 0
     lora_spi_device: int = 0
@@ -41,6 +43,9 @@ class Settings(BaseSettings):
     lora_coding_rate: int = Field(default=5, ge=5, le=8)
     lora_preamble_length: int = 8
     lora_sync_word: int = 0x12
+    # fake source — 하드웨어 없이 앱 전 화면을 검증하기 위한 합성 데이터
+    fake_node_hw_id: str = "aabbccddeeff"
+    fake_interval_s: float = 3.0
 
     # --- 운영 정보 -----------------------------------------------------
     # 등록 시 앱에 내려주는 관리실 번호. 앱에 하드코딩하지 않기 위해 서버가 소유한다.

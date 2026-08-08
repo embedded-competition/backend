@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Orca Backend",
-    "description": "EV 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
+    "description": "전동 킥보드 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
     "version": "0.1.0"
   },
   "paths": {
@@ -442,7 +442,8 @@
                 "type": "null"
               }
             ],
-            "title": "Note"
+            "title": "Note",
+            "description": "현장 확인 메모 (선택)"
           }
         },
         "type": "object",
@@ -662,11 +663,17 @@
           },
           "kind": {
             "type": "string",
-            "title": "Kind"
+            "title": "Kind",
+            "examples": [
+              "state_change",
+              "action",
+              "suppressed"
+            ]
           },
           "description": {
             "type": "string",
-            "title": "Description"
+            "title": "Description",
+            "description": "서버가 생성한 문장 (앱 C5)"
           }
         },
         "type": "object",
@@ -742,7 +749,8 @@
           }
         },
         "type": "object",
-        "title": "GasChannelResponse"
+        "title": "GasChannelResponse",
+        "description": "raw(sraw·mv·baseline)는 없다 — 노드가 정규화값만 보낸다 (정합화 B2)."
       },
       "HTTPValidationError": {
         "properties": {

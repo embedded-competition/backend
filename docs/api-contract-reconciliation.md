@@ -142,9 +142,9 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 
 | 항목 | 상태 |
 |---|---|
-| A1 URL·에러·camelCase | 컨벤션 개정 + 구현 |
-| A2 deviceToken | 스키마 + 구현 |
-| A3 Expo Push / push_tokens rename | 스키마 |
-| A4 events.description | 스키마 + 구현 |
+| A1 URL·에러·camelCase | ✅ 구현 완료 |
+| A2 deviceToken | ✅ 구현 완료 (해시 저장, 404 은닉 포함) |
+| A3 Expo Push / push_tokens rename | ✅ 구현 완료 (자격증명 없으면 LoggingPushSender) |
+| A4 events.description | ✅ 구현 완료 (`core/descriptions.py`) |
 | B1~B3 | **앱 팀 회신 대기** — 회신 전까지 서버는 노드 판정 전제로 진행 |
 | C1~C2 | **임베디드 팀 조정 대기** — 서버는 nullable로 받아 영향 차단 |

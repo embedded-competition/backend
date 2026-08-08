@@ -29,7 +29,9 @@ class RawFrame:
 class FrameSource(Protocol):
     """LoRa 수신 어댑터. 하드웨어 없는 환경에서는 fake 구현을 주입한다."""
 
-    async def frames(self) -> AsyncIterator[RawFrame]: ...
+    def frames(self) -> AsyncIterator[RawFrame]:
+        """async generator라 호출 자체는 동기다 — await이 아니라 async for로 쓴다."""
+        ...
 
     async def close(self) -> None: ...
 

@@ -8,7 +8,15 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.domain.models import AccessToken, Alert, Device, Event, PushToken, Reading
+from app.domain.models import (
+    AccessToken,
+    Alert,
+    Device,
+    Event,
+    PushDelivery,
+    PushToken,
+    Reading,
+)
 from app.domain.value_objects import DeviceId
 from app.infrastructure.db.mappers import (
     alert_to_domain,
@@ -27,6 +35,7 @@ from app.infrastructure.db.orm import (
     AlertOrm,
     DeviceOrm,
     EventOrm,
+    PushDeliveryOrm,
     PushTokenOrm,
     ReadingOrm,
 )
@@ -251,3 +260,48 @@ class SqlAlchemyPushTokenRepository:
         apply_push_token(row, token)
         self._session.flush()
         return push_token_to_domain(row)
+
+
+class SqlAlchemyPushDeliveryRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, delivery: PushDelivery) -> PushDelivery:
+        token_id = self._session.scalar(
+            select(PushTokenOrm.id).where(PushTokenOrm.token == delivery.token)
+        )
+        if token_id is None:
+            # 토큰이 사라진 뒤 도착한 결과. 이력을 버리지 않되 조용히 넘긴다.
+            return delivery
+        row = PushDeliveryOrm(
+            alert_id=delivery.alert_id,
+            token_id=token_id,
+            attempt=delivery.attempt,
+            status=delivery.status,
+            error_code=delivery.error_code,
+            sent_at=delivery.sent_at,
+        )
+        self._session.add(row)
+        self._session.flush()
+        delivery.id = row.id
+        return delivery
+
+    def list_for_alert(self, alert_id: int) -> list[PushDelivery]:
+        rows = self._session.scalars(
+            select(PushDeliveryOrm, PushTokenOrm.token)
+            .join(PushTokenOrm, PushDeliveryOrm.token_id == PushTokenOrm.id)
+            .where(PushDeliveryOrm.alert_id == alert_id)
+            .order_by(PushDeliveryOrm.id)
+        )
+        return [
+            PushDelivery(
+                id=row.id,
+                alert_id=row.alert_id,
+                token="",
+                attempt=row.attempt,
+                status=row.status,
+                error_code=row.error_code,
+                sent_at=row.sent_at,
+            )
+            for row in rows
+        ]

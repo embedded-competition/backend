@@ -1,0 +1,194 @@
+"""수신 루프 통합 테스트 — fake source로 하드웨어 없이 전 경로를 태운다."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+import pytest
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.api import wiring
+from app.core.notification_service import NotificationService
+from app.domain.models import Device, PushToken
+from app.domain.ports import PushResult, RawFrame
+from app.domain.value_objects import AlertState
+from app.infrastructure.clock import SystemClock
+from app.infrastructure.db.repositories import (
+    SqlAlchemyAlertRepository,
+    SqlAlchemyDeviceRepository,
+    SqlAlchemyPushDeliveryRepository,
+    SqlAlchemyPushTokenRepository,
+    SqlAlchemyReadingRepository,
+)
+from app.infrastructure.lora.frame import build_frame
+from app.infrastructure.lora.receiver import FrameReceiver
+from app.infrastructure.lora.scenario import DEFAULT_SCENARIO, ScenarioFrameFactory
+from app.infrastructure.lora.sources import ReplayFrameSource
+from tests.fakes.push import RecordingPushSender
+
+HW_ID = "aabbccddeeff"
+MAC = "AA:BB:CC:DD:EE:FF"
+
+
+@pytest.fixture
+def registered(session: Session, now: datetime) -> Device:
+    device = SqlAlchemyDeviceRepository(session).save(
+        Device(public_id="dev_test01", mac=MAC, label="1호차", registered_at=now)
+    )
+    SqlAlchemyPushTokenRepository(session).upsert(
+        PushToken(
+            device_id=device.id or 0,
+            token="ExponentPushToken[demo]",
+            registered_at=now,
+        )
+    )
+    session.commit()
+    return device
+
+
+@pytest.fixture
+def sender() -> RecordingPushSender:
+    return RecordingPushSender()
+
+
+def _receiver(
+    factory: sessionmaker[Session], sender: RecordingPushSender, frames: list[RawFrame]
+) -> FrameReceiver:
+    def notifier(session: Session) -> NotificationService:
+        return NotificationService(
+            push_tokens=SqlAlchemyPushTokenRepository(session),
+            deliveries=SqlAlchemyPushDeliveryRepository(session),
+            sender=sender,
+            clock=SystemClock(),
+            max_attempts=2,
+            backoff_base_s=0.0,  # 테스트가 백오프를 기다리지 않게
+        )
+
+    return FrameReceiver(
+        source=ReplayFrameSource(frames),
+        session_scope=wiring.session_scope_factory(factory),
+        ingest_factory=wiring.build_ingest_service,
+        notifier_factory=notifier,
+    )
+
+
+def _scenario_frames(count: int, now: datetime) -> list[RawFrame]:
+    factory = ScenarioFrameFactory(HW_ID, with_gps=False)
+    return [
+        RawFrame(
+            payload=build_frame(factory.build(seq, at=now)),
+            received_at=now,
+            rssi=-74,
+            snr=7.0,
+        )
+        for seq in range(count)
+    ]
+
+
+class TestReceiveLoop:
+    async def test_scenario_is_stored(
+        self,
+        session_factory: sessionmaker[Session],
+        session: Session,
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+    ) -> None:
+        receiver = _receiver(session_factory, sender, _scenario_frames(len(DEFAULT_SCENARIO), now))
+
+        await receiver.run()
+
+        assert receiver.stats.received == len(DEFAULT_SCENARIO)
+        # 같은 measured_at + 다른 seq라 전부 저장된다
+        assert receiver.stats.stored == len(DEFAULT_SCENARIO)
+        assert receiver.stats.parse_error == 0
+
+    async def test_transitions_trigger_push(
+        self,
+        session_factory: sessionmaker[Session],
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+    ) -> None:
+        receiver = _receiver(session_factory, sender, _scenario_frames(len(DEFAULT_SCENARIO), now))
+
+        await receiver.run()
+
+        # NORMAL→WATCH, WATCH→ALARM 두 번만 발송된다 (같은 상태 유지엔 안 보냄)
+        states = [state for _, state in sender.sent]
+        assert states == [AlertState.WATCH.value, AlertState.ALARM.value]
+
+    async def test_corrupted_frame_does_not_stop_loop(
+        self,
+        session_factory: sessionmaker[Session],
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+    ) -> None:
+        frames = _scenario_frames(3, now)
+        broken = bytearray(frames[1].payload)
+        broken[10] ^= 0xFF
+        frames[1] = RawFrame(payload=bytes(broken), received_at=now)
+
+        receiver = _receiver(session_factory, sender, frames)
+        await receiver.run()
+
+        assert receiver.stats.crc_error == 1
+        assert receiver.stats.stored == 2  # 나머지는 정상 처리
+
+    async def test_unknown_device_is_counted_not_raised(
+        self,
+        session_factory: sessionmaker[Session],
+        sender: RecordingPushSender,
+        now: datetime,
+    ) -> None:
+        """등록 안 된 노드가 쏴도 루프가 죽지 않는다."""
+        receiver = _receiver(session_factory, sender, _scenario_frames(2, now))
+
+        await receiver.run()
+
+        assert receiver.stats.unknown_device == 2
+        assert receiver.stats.stored == 0
+
+
+class TestPushRetry:
+    async def test_permanent_failure_deactivates_token(
+        self,
+        session_factory: sessionmaker[Session],
+        session: Session,
+        registered: Device,
+        now: datetime,
+    ) -> None:
+        sender = RecordingPushSender(
+            results=[
+                PushResult(
+                    delivered=False,
+                    error_code="DeviceNotRegistered",
+                    permanent_failure=True,
+                )
+            ]
+        )
+        receiver = _receiver(session_factory, sender, _scenario_frames(len(DEFAULT_SCENARIO), now))
+
+        await receiver.run()
+        session.rollback()
+
+        tokens = SqlAlchemyPushTokenRepository(session).list_active(registered.id or 0)
+        assert tokens == []  # 무효 토큰을 방치하면 실패율이 계속 쌓인다
+
+    async def test_alerts_are_recorded(
+        self,
+        session_factory: sessionmaker[Session],
+        session: Session,
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+    ) -> None:
+        receiver = _receiver(session_factory, sender, _scenario_frames(len(DEFAULT_SCENARIO), now))
+
+        await receiver.run()
+        session.rollback()
+
+        alerts = SqlAlchemyAlertRepository(session).list_for_device(registered.id or 0, limit=10)
+        assert len(alerts) == 2
+        assert SqlAlchemyReadingRepository(session).latest(registered.id or 0)

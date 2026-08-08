@@ -11,7 +11,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
 from app.infrastructure.db.session import create_db_engine, create_session_factory
@@ -24,6 +24,7 @@ def settings(tmp_path: Path) -> Settings:
     return Settings(
         environment="local",
         database_path=tmp_path / "test.db",
+        lora_enabled=False,
         lora_source="fake",
         fcm_credentials_path=None,
         management_phone="01029015899",
@@ -69,6 +70,16 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 def now() -> datetime:
     """고정 시각. 실제 시각에 의존하는 단정을 만들지 않는다."""
     return datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def session_factory(settings: Settings, migrated_db: None) -> Iterator[sessionmaker[Session]]:
+    """백그라운드 task용 — 요청 스코프와 달리 프레임마다 세션을 연다."""
+    engine = create_db_engine(settings.database_path)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture

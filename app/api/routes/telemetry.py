@@ -7,14 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import AuthenticatedDevice, TelemetryServiceDep
-from app.api.schemas.telemetry import (
-    EventListResponse,
-    EventResponse,
-    FleetComparisonResponse,
-    HistoryResponse,
-    TelemetryResponse,
-)
+from app.api.auth import AuthenticatedDevice
+from app.api.providers import TelemetryServiceDep
+from app.api.schemas.event import EventListResponse, EventResponse
+from app.api.schemas.fleet import FleetComparisonResponse
+from app.api.schemas.history import HistoryResponse
+from app.api.schemas.telemetry import TelemetryResponse
 
 router = APIRouter(prefix="/devices/{device_id}", tags=["telemetry"])
 

@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from app.domain.models import AccessToken, Alert, Device, Event, PushToken, Reading
+from app.domain.models import (
+    AccessToken,
+    Alert,
+    Device,
+    Event,
+    PushDelivery,
+    PushToken,
+    Reading,
+)
 from app.domain.value_objects import DeviceId
 
 
@@ -90,3 +98,9 @@ class PushTokenRepository(Protocol):
     def list_active(self, device_id: int) -> list[PushToken]: ...
 
     def save(self, token: PushToken) -> PushToken: ...
+
+
+class PushDeliveryRepository(Protocol):
+    def add(self, delivery: PushDelivery) -> PushDelivery: ...
+
+    def list_for_alert(self, alert_id: int) -> list[PushDelivery]: ...
