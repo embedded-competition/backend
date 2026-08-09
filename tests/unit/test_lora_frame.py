@@ -12,10 +12,10 @@ from app.domain.exceptions import (
     FrameTooShort,
     UnsupportedFrameVersion,
 )
-from app.domain.frames import TelemetryFrame
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.measurements import Measure
 from app.domain.value_objects import (
     AlertState,
-    ChannelReading,
     DeviceId,
     GasChannel,
     SignatureFlags,
@@ -65,17 +65,18 @@ class TestRoundTrip:
         assert len(build_frame(_frame())) == BASE_SIZE
 
     def test_frame_with_gps_is_larger(self) -> None:
-        payload = build_frame(_frame(lat=37.5573, lon=127.0329))
+        payload = build_frame(_frame(location=Coordinates(lat=37.5573, lon=127.0329)))
 
         assert len(payload) == GPS_SIZE
         assert GPS_SIZE - BASE_SIZE == 8
 
     def test_channels_survive(self) -> None:
         original = _frame(
-            channels=(
-                ChannelReading(channel=GasChannel.VOC, deviation=6.28, slope=7.15),
-                ChannelReading(channel=GasChannel.H2, deviation=-1.5, slope=None),
-            )
+            values={
+                Measure.VOC_DEV: 6.28,
+                Measure.VOC_SLOPE: 7.15,
+                Measure.H2_DEV: -1.5,
+            }
         )
 
         restored = parse_frame(build_frame(original))
@@ -103,10 +104,13 @@ class TestRoundTrip:
         assert restored.signature.is_complete is False
 
     def test_gps_precision_is_preserved_enough(self) -> None:
-        restored = parse_frame(build_frame(_frame(lat=37.5573, lon=127.0329)))
+        original = _frame(location=Coordinates(lat=37.5573, lon=127.0329))
 
-        assert restored.lat == pytest.approx(37.5573, abs=1e-4)
-        assert restored.lon == pytest.approx(127.0329, abs=1e-4)
+        restored = parse_frame(build_frame(original))
+
+        assert restored.location is not None
+        assert restored.location.lat == pytest.approx(37.5573, abs=1e-4)
+        assert restored.location.lon == pytest.approx(127.0329, abs=1e-4)
 
 
 class TestRejection:
@@ -147,8 +151,15 @@ class TestRejection:
     def test_value_beyond_int16_scale_is_rejected(self) -> None:
         """±327.67을 넘는 z-score는 인코딩 불가 — 조용히 잘리지 않는다."""
         with pytest.raises(FrameFieldError):
-            build_frame(
-                _frame(
-                    channels=(ChannelReading(channel=GasChannel.VOC, deviation=400.0, slope=None),)
-                )
-            )
+            build_frame(_frame(values={Measure.VOC_DEV: 400.0}))
+
+    def test_out_of_range_measure_is_rejected_on_parse(self) -> None:
+        """범위는 measurements 표가 정한다 — 코덱이 따로 알지 않는다."""
+        payload = bytearray(build_frame(_frame(values={Measure.HUMIDITY_PCT: 50.0})))
+        slot = codec.MEASURE_ORDER.index(Measure.HUMIDITY_PCT)
+        offset = 15 + slot * 2  # _HEADER_SIZE + 슬롯 오프셋
+        payload[offset : offset + 2] = (200 * 100).to_bytes(2, "little", signed=True)
+        payload[-2:] = crc16_ccitt(bytes(payload[:-2])).to_bytes(2, "little")
+
+        with pytest.raises(FrameFieldError):
+            parse_frame(bytes(payload))

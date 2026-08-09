@@ -8,10 +8,10 @@ from app.core import identity
 from app.domain.exceptions import DeviceAlreadyPaired, DeviceNotFound, Unauthorized
 from app.domain.models import AccessToken, Device, PushToken
 from app.domain.ports import Clock
-from app.domain.repository import (
-    AccessTokenRepository,
-    DeviceRepository,
-    PushTokenRepository,
+from app.infrastructure.db.repositories import (
+    SqlAlchemyAccessTokenRepository,
+    SqlAlchemyDeviceRepository,
+    SqlAlchemyPushTokenRepository,
 )
 
 
@@ -23,21 +23,13 @@ class DeviceRegistration:
     token: str
 
 
+@dataclass(frozen=True, slots=True)
 class DeviceService:
-    def __init__(
-        self,
-        *,
-        devices: DeviceRepository,
-        access_tokens: AccessTokenRepository,
-        push_tokens: PushTokenRepository,
-        clock: Clock,
-        default_management_phone: str | None = None,
-    ) -> None:
-        self._devices = devices
-        self._access_tokens = access_tokens
-        self._push_tokens = push_tokens
-        self._clock = clock
-        self._default_management_phone = default_management_phone
+    devices: SqlAlchemyDeviceRepository
+    access_tokens: SqlAlchemyAccessTokenRepository
+    push_tokens: SqlAlchemyPushTokenRepository
+    clock: Clock
+    default_management_phone: str | None = None
 
     def register(self, raw_mac: str) -> DeviceRegistration:
         """MAC으로 기기를 등록하고 deviceToken을 발급한다.
@@ -45,21 +37,21 @@ class DeviceService:
         이미 등록된 MAC은 거절한다 — 앱 spec §② 409 already_paired.
         """
         mac = identity.normalize_mac(raw_mac)
-        if self._devices.get_by_mac(mac) is not None:
+        if self.devices.get_by_mac(mac) is not None:
             raise DeviceAlreadyPaired(f"이미 등록된 MAC: {mac}")
 
-        now = self._clock.now()
-        device = self._devices.save(
+        now = self.clock.now()
+        device = self.devices.save(
             Device(
                 public_id=identity.new_public_id(),
                 mac=mac,
                 label=identity.default_label(mac),
-                management_phone=self._default_management_phone,
+                management_phone=self.default_management_phone,
                 registered_at=now,
             )
         )
         token = identity.new_device_token()
-        self._access_tokens.add(
+        self.access_tokens.add(
             AccessToken(
                 device_id=device.id or 0,
                 token_hash=identity.hash_token(token),
@@ -71,17 +63,17 @@ class DeviceService:
     def authenticate(self, token: str) -> Device:
         """Bearer 토큰 → 소유 기기. 실패 사유는 전부 unauthorized로 뭉갠다."""
         token_hash = identity.hash_token(token)
-        device_id = self._access_tokens.find_device_id(token_hash)
+        device_id = self.access_tokens.find_device_id(token_hash)
         if device_id is None:
             raise Unauthorized("유효하지 않은 deviceToken")
-        device = self._devices.get(device_id)
+        device = self.devices.get(device_id)
         if device is None:  # pragma: no cover - FK가 보장하지만 방어
             raise Unauthorized("토큰이 가리키는 기기가 없다")
-        self._access_tokens.touch(token_hash, at=self._clock.now())
+        self.access_tokens.touch(token_hash, at=self.clock.now())
         return device
 
     def get_by_public_id(self, public_id: str) -> Device:
-        device = self._devices.get_by_public_id(public_id)
+        device = self.devices.get_by_public_id(public_id)
         if device is None:
             raise DeviceNotFound(f"기기 없음: {public_id}")
         return device
@@ -90,11 +82,11 @@ class DeviceService:
         self, device: Device, token: str, platform: str | None = None
     ) -> PushToken:
         """멱등 — 같은 토큰 재등록이 중복 행을 만들지 않는다."""
-        return self._push_tokens.upsert(
+        return self.push_tokens.upsert(
             PushToken(
                 device_id=device.id or 0,
                 token=token,
                 platform=platform,
-                registered_at=self._clock.now(),
+                registered_at=self.clock.now(),
             )
         )

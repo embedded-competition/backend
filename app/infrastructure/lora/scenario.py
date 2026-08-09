@@ -9,14 +9,9 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.domain.frames import TelemetryFrame
-from app.domain.value_objects import (
-    AlertState,
-    ChannelReading,
-    DeviceId,
-    GasChannel,
-    SignatureFlags,
-)
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.measurements import Measure
+from app.domain.value_objects import AlertState, DeviceId, SignatureFlags
 from app.infrastructure.lora.codec import FRAME_VERSION
 
 
@@ -66,30 +61,21 @@ class ScenarioFrameFactory:
             state=step.state,
             latched=step.state is AlertState.ALARM,
             batt_mv=3960 - (seq % 40),
-            channels=(
-                ChannelReading(
-                    channel=GasChannel.VOC,
-                    deviation=step.voc_dev,
-                    slope=step.voc_slope,
-                ),
-                ChannelReading(
-                    channel=GasChannel.H2,
-                    deviation=round(step.voc_dev * 0.4, 2),
-                    slope=round(step.voc_slope * 0.3, 2),
-                ),
-            ),
+            values={
+                Measure.VOC_DEV: step.voc_dev,
+                Measure.VOC_SLOPE: step.voc_slope,
+                Measure.H2_DEV: round(step.voc_dev * 0.4, 2),
+                Measure.H2_SLOPE: round(step.voc_slope * 0.3, 2),
+                Measure.TEMP_C: round(24.0 + step.voc_dev * 0.6, 2),
+                Measure.HUMIDITY_PCT: round(41.0 + math.sin(seq / 5) * 3, 2),
+                Measure.D_RH_DT: 0.2,
+            },
             signature=SignatureFlags(
                 rise=promoted,
                 hold=step.state is AlertState.ALARM,
                 no_recover=promoted,
                 hold_s=32 if step.state is AlertState.ALARM else 0,
             ),
-            temp_c=round(24.0 + step.voc_dev * 0.6, 2),
-            humidity_pct=round(41.0 + math.sin(seq / 5) * 3, 2),
-            d_rh_dt=0.2,
-            pressure_dev=None,
-            pressure_rate=None,
             water=False,
-            lat=37.5573 if self._with_gps else None,
-            lon=127.0329 if self._with_gps else None,
+            location=Coordinates(lat=37.5573, lon=127.0329) if self._with_gps else None,
         )

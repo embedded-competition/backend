@@ -11,6 +11,7 @@ from app.api.schemas.base import ApiModel
 from app.api.schemas.channels import GasChannelResponse
 from app.core.aggregation import HourlySample
 from app.core.telemetry_service import DailyHistory
+from app.domain.measurements import Aspect, Measure, channel_measures
 from app.domain.value_objects import AlertState, GasChannel
 
 
@@ -29,13 +30,21 @@ class HourlySampleResponse(ApiModel):
         return cls(
             hour=sample.hour,
             state=sample.state,
-            gas=GasChannelResponse(dev_z=sample.channels.get(GasChannel.VOC)),
-            h2=GasChannelResponse(dev_z=sample.channels.get(GasChannel.H2)),
-            co=GasChannelResponse(dev_z=sample.channels.get(GasChannel.CO)),
-            temp_c=sample.temp_c,
-            rh=sample.humidity_pct,
-            pres_dev=sample.pressure_dev,
+            gas=_channel(sample, GasChannel.VOC),
+            h2=_channel(sample, GasChannel.H2),
+            co=_channel(sample, GasChannel.CO),
+            temp_c=sample.value(Measure.TEMP_C),
+            rh=sample.value(Measure.HUMIDITY_PCT),
+            pres_dev=sample.value(Measure.PRESSURE_DEV),
         )
+
+
+def _channel(sample: HourlySample, channel: GasChannel) -> GasChannelResponse:
+    slots = channel_measures(channel)
+    return GasChannelResponse(
+        dev_z=sample.value(slots[Aspect.DEVIATION]),
+        slope=sample.value(slots[Aspect.SLOPE]),
+    )
 
 
 class HistoryEventResponse(ApiModel):

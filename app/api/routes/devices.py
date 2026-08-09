@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Response, status
 
 from app.api.auth import AuthenticatedDevice
-from app.api.providers import DeviceServiceDep
 from app.api.schemas.base import ErrorResponse
 from app.api.schemas.device import (
     DeviceRegisterRequest,
@@ -13,6 +12,7 @@ from app.api.schemas.device import (
     PushTokenRequest,
     PushTokenResponse,
 )
+from app.runtime.providers import DeviceServiceDep
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 

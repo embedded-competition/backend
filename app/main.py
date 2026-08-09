@@ -12,14 +12,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api import wiring
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routes import alerts, devices, health, telemetry
 from app.core.config import Settings, get_settings
 from app.domain.ports import RawFrame
 from app.infrastructure.db.session import create_db_engine, create_session_factory
-from app.infrastructure.lora.factory import create_frame_source
-from app.infrastructure.lora.receiver import FrameReceiver
+from app.runtime import wiring
+from app.runtime.lora import create_frame_source
+from app.runtime.receiver import FrameReceiver
 
 logger = logging.getLogger(__name__)
 

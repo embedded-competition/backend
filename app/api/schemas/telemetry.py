@@ -19,6 +19,8 @@ from app.api.schemas.channels import (
     PressureResponse,
     SignatureResponse,
 )
+from app.domain.frames import TelemetryFrame
+from app.domain.measurements import Measure
 from app.domain.models import Device, Reading
 from app.domain.value_objects import AlertState, GasChannel
 
@@ -52,9 +54,9 @@ class ModuleResponse(ApiModel):
         return cls(
             node_id=str(device.hw_id) if device.hw_id else None,
             seq=reading.seq,
-            batt_mv=reading.batt_mv,
-            rssi=reading.rssi,
-            snr=reading.snr,
+            batt_mv=reading.frame.batt_mv,
+            rssi=reading.radio.rssi,
+            snr=reading.radio.snr,
             last_seen=reading.received_at,
         )
 
@@ -82,52 +84,54 @@ class TelemetryResponse(ApiModel):
                 h2=GasChannelResponse(),
                 module=ModuleResponse.from_device(device),
             )
+        frame = reading.frame
         return cls(
-            state=reading.state,
-            latched=bool(reading.latched),
-            gas=channel_of(reading, GasChannel.VOC),
-            h2=channel_of(reading, GasChannel.H2),
-            co=channel_of(reading, GasChannel.CO) if reading.channel(GasChannel.CO) else None,
-            env=_env_of(reading),
-            pressure=_pressure_of(reading),
-            water=reading.water,
-            signature=_signature_of(reading),
-            location=_location_of(reading),
+            state=frame.state,
+            latched=frame.latched,
+            gas=channel_of(frame, GasChannel.VOC),
+            h2=channel_of(frame, GasChannel.H2),
+            co=channel_of(frame, GasChannel.CO) if frame.channel(GasChannel.CO) else None,
+            env=_env_of(frame),
+            pressure=_pressure_of(frame),
+            water=frame.water,
+            signature=_signature_of(frame),
+            location=LocationResponse(lat=frame.location.lat, lon=frame.location.lon)
+            if frame.location
+            else None,
             module=ModuleResponse.from_reading(device, reading),
         )
 
 
-def channel_of(reading: Reading, channel: GasChannel) -> GasChannelResponse:
-    measurement = reading.channel(channel)
+def channel_of(frame: TelemetryFrame, channel: GasChannel) -> GasChannelResponse:
+    measurement = frame.channel(channel)
     if measurement is None:
         return GasChannelResponse()
     return GasChannelResponse(dev_z=measurement.deviation, slope=measurement.slope)
 
 
-def _env_of(reading: Reading) -> EnvResponse | None:
-    if reading.temp_c is None and reading.humidity_pct is None:
+def _env_of(frame: TelemetryFrame) -> EnvResponse | None:
+    """묶음에 값이 하나도 없으면 그룹 자체를 안 내린다 — 미장착과 0을 구분."""
+    temp = frame.value(Measure.TEMP_C)
+    rh = frame.value(Measure.HUMIDITY_PCT)
+    if temp is None and rh is None:
         return None
-    return EnvResponse(temp_c=reading.temp_c, rh=reading.humidity_pct, d_rh_dt=reading.d_rh_dt)
+    return EnvResponse(temp_c=temp, rh=rh, d_rh_dt=frame.value(Measure.D_RH_DT))
 
 
-def _pressure_of(reading: Reading) -> PressureResponse | None:
-    if reading.pressure_dev is None and reading.pressure_rate is None:
+def _pressure_of(frame: TelemetryFrame) -> PressureResponse | None:
+    dev = frame.value(Measure.PRESSURE_DEV)
+    rate = frame.value(Measure.PRESSURE_RATE)
+    if dev is None and rate is None:
         return None
-    return PressureResponse(pres_dev=reading.pressure_dev, pres_rate=reading.pressure_rate)
+    return PressureResponse(pres_dev=dev, pres_rate=rate)
 
 
-def _signature_of(reading: Reading) -> SignatureResponse | None:
-    if reading.signature is None:
+def _signature_of(frame: TelemetryFrame) -> SignatureResponse | None:
+    if frame.signature is None:
         return None
     return SignatureResponse(
-        rise=reading.signature.rise,
-        hold=reading.signature.hold,
-        no_recover=reading.signature.no_recover,
-        hold_s=reading.signature.hold_s,
+        rise=frame.signature.rise,
+        hold=frame.signature.hold,
+        no_recover=frame.signature.no_recover,
+        hold_s=frame.signature.hold_s,
     )
-
-
-def _location_of(reading: Reading) -> LocationResponse | None:
-    if reading.lat is None or reading.lon is None:
-        return None
-    return LocationResponse(lat=reading.lat, lon=reading.lon)

@@ -9,9 +9,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.auth import AuthenticatedDevice
-from app.api.providers import AlertServiceDep
 from app.api.schemas.alarm import AlarmReleaseRequest, AlarmReleaseResponse
 from app.api.schemas.base import ErrorResponse
+from app.runtime.providers import AlertServiceDep
 
 router = APIRouter(prefix="/devices/{device_id}", tags=["alerts"])
 

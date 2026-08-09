@@ -7,7 +7,6 @@ from datetime import datetime
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api import wiring
 from app.core.notification_service import NotificationService
 from app.domain.models import Device, PushToken
 from app.domain.ports import PushResult, RawFrame
@@ -21,9 +20,10 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyReadingRepository,
 )
 from app.infrastructure.lora.frame import build_frame
-from app.infrastructure.lora.receiver import FrameReceiver
 from app.infrastructure.lora.scenario import DEFAULT_SCENARIO, ScenarioFrameFactory
 from app.infrastructure.lora.sources import ReplayFrameSource
+from app.runtime import wiring
+from app.runtime.receiver import FrameReceiver
 from tests.fakes.push import RecordingPushSender
 
 HW_ID = "aabbccddeeff"

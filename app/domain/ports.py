@@ -1,4 +1,10 @@
-"""외부 시스템 port. 구현은 infrastructure에, 조립은 main/deps에서."""
+"""외부 시스템 port. 구현은 infrastructure에, 조립은 runtime에서.
+
+**저장소는 여기 없다.** Protocol은 구현이 2개 이상일 때만 만든다 —
+FrameSource(fake/sx1276)·PushSender(logging/expo)·Clock(system/fixed)이 그 경우다.
+저장소는 SQLAlchemy 구현 하나뿐이고 테스트도 실제 SQLite를 쓰므로, Protocol이
+타입 중복만 만든다. 두 번째 구현이 필요해지면 그때 추출한다.
+"""
 
 from __future__ import annotations
 
