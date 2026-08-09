@@ -72,11 +72,14 @@ class TestRoundTrip:
 
         restored = parse_frame(build_frame(original))
 
-        by_channel = {c.channel: c for c in restored.channels}
-        assert by_channel[GasChannel.VOC].deviation == pytest.approx(6.28)
-        assert by_channel[GasChannel.H2].slope is None
+        voc = restored.channel(GasChannel.VOC)
+        h2 = restored.channel(GasChannel.H2)
+        assert voc is not None
+        assert h2 is not None
+        assert voc.deviation == pytest.approx(6.28)
+        assert h2.slope is None
         # 미장착 채널은 아예 올라오지 않는다
-        assert GasChannel.CO not in by_channel
+        assert restored.channel(GasChannel.CO) is None
 
     def test_signature_absent_stays_none(self) -> None:
         """'전부 false'와 '안 보냄'을 구분해야 오경보 분석이 가능하다."""
@@ -92,7 +95,9 @@ class TestRoundTrip:
         restored = parse_frame(build_frame(original))
 
         assert restored.signature is not None
-        assert restored.signature.is_complete is False
+        assert restored.signature.rise is False
+        assert restored.signature.hold is False
+        assert restored.signature.no_recover is False
 
     def test_gps_precision_is_preserved_enough(self) -> None:
         original = _frame(location=Coordinates(lat=37.5573, lon=127.0329))

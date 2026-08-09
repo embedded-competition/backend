@@ -37,6 +37,6 @@ def build(alert: Alert, device: Device) -> PushMessage:
         data={
             "deviceId": device.public_id,
             "state": alert.to_state.value,
-            "alertId": str(alert.id or ""),
+            "alertId": str(alert.key),
         },
     )

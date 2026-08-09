@@ -10,16 +10,6 @@ from app.domain.value_objects import AlertState
 from tests.builders import a_device
 
 
-class TestOfflineJudgement:
-    def test_never_seen_device_is_offline(self, now: datetime) -> None:
-        assert a_device().is_offline(now=now, threshold_s=900) is True
-
-    def test_recently_seen_device_is_online(self, now: datetime) -> None:
-        device = a_device(last_seen_at=now - timedelta(seconds=60))
-
-        assert device.is_offline(now=now, threshold_s=900) is False
-
-
 class TestMissedFrames:
     @pytest.mark.parametrize(
         ("last_seq", "incoming", "expected"),
@@ -40,7 +30,9 @@ class TestObserve:
 
     def test_naive_datetime_is_rejected(self, now: datetime) -> None:
         with pytest.raises(ValueError, match="timezone-aware"):
-            a_device().observe(seq=1, at=datetime(2026, 8, 8, 12, 0, 0), state=AlertState.NORMAL)
+            # naive datetime이 이 테스트의 입력이다 — DTZ가 잡으면 안 되는 유일한 자리.
+            naive = datetime(2026, 8, 8, 12, 0, 0)  # noqa: DTZ001
+            a_device().observe(seq=1, at=naive, state=AlertState.NORMAL)
 
     def test_blank_label_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="label"):

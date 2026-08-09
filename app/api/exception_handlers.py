@@ -44,7 +44,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "validation_error", request_id)
 
     @app.exception_handler(Exception)
-    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    async def _unhandled(request: Request, _exc: Exception) -> JSONResponse:
         request_id = _request_id(request)
         # 스택·SQL·경로를 응답에 노출하지 않는다.
         logger.exception("unhandled error", extra={"request_id": request_id})

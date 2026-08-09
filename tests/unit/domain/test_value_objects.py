@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.domain.frames import Coordinates
-from app.domain.value_objects import AlertState, DeviceId, GasChannel, SignatureFlags
+from app.domain.value_objects import AlertState, DeviceId
 
 
 class TestDeviceId:
@@ -15,10 +15,6 @@ class TestDeviceId:
 
 
 class TestAlertState:
-    def test_alarm_is_not_auto_clearable(self) -> None:
-        assert AlertState.ALARM.is_auto_clearable is False
-        assert AlertState.WATCH.is_auto_clearable is True
-
     @pytest.mark.parametrize(
         ("state", "expected"),
         [
@@ -31,20 +27,6 @@ class TestAlertState:
     )
     def test_dispatch_targets(self, state: AlertState, expected: bool) -> None:
         assert state.needs_dispatch is expected
-
-
-class TestGasChannel:
-    def test_co_has_no_solo_promotion_path(self) -> None:
-        assert GasChannel.CO.can_promote_alone is False
-        assert GasChannel.VOC.can_promote_alone is True
-        assert GasChannel.H2.can_promote_alone is True
-
-
-class TestSignatureFlags:
-    def test_all_three_required_for_completeness(self) -> None:
-        """크기 단독 판정 금지 (gas-detection-algorithm-design.md P5)."""
-        assert SignatureFlags(rise=True, hold=True, no_recover=True, hold_s=30).is_complete
-        assert not SignatureFlags(rise=True, hold=False, no_recover=True, hold_s=30).is_complete
 
 
 class TestCoordinates:

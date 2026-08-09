@@ -34,7 +34,7 @@ class TestWithActiveAlarm:
 
         assert response.status_code == 200
         assert response.json() == {"released": True}
-        assert alerts.list_active() == []
+        assert alerts.list_active_for(device_id) == []
 
     async def test_is_recorded_as_event(
         self, device: RegisteredDevice, session: Session, device_id: int, now: datetime

@@ -37,5 +37,4 @@ def saved_device(devices: SqlAlchemyDeviceRepository, now: datetime) -> Device:
 @pytest.fixture
 def device_id(saved_device: Device) -> int:
     """FK로 쓸 PK. 저장 직후라 항상 채워져 있다."""
-    assert saved_device.id is not None
-    return saved_device.id
+    return saved_device.key

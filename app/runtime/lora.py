@@ -34,6 +34,7 @@ def radio_config(settings: Settings) -> RadioConfig:
     return RadioConfig(
         spi_bus=settings.lora_spi_bus,
         spi_device=settings.lora_spi_device,
+        reset_gpio=settings.lora_reset_gpio,
         frequency_hz=settings.lora_frequency_hz,
         spreading_factor=settings.lora_spreading_factor,
         bandwidth_hz=settings.lora_bandwidth_hz,

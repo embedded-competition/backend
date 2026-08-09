@@ -38,23 +38,3 @@ class SqlAlchemyPushDeliveryRepository:
         self.session.flush()
         delivery.id = row.id
         return delivery
-
-    def list_for_alert(self, alert_id: int) -> list[PushDelivery]:
-        rows = self.session.scalars(
-            select(PushDeliveryOrm, PushTokenOrm.token)
-            .join(PushTokenOrm, PushDeliveryOrm.token_id == PushTokenOrm.id)
-            .where(PushDeliveryOrm.alert_id == alert_id)
-            .order_by(PushDeliveryOrm.id)
-        )
-        return [
-            PushDelivery(
-                id=row.id,
-                alert_id=row.alert_id,
-                token="",
-                attempt=row.attempt,
-                status=row.status,
-                error_code=row.error_code,
-                sent_at=row.sent_at,
-            )
-            for row in rows
-        ]

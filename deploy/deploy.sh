@@ -24,7 +24,8 @@ df -h "$REPO_DIR" | tail -1
 echo "== 2. 코드 동기화 =="
 git fetch --all --tags
 git checkout --detach "$TARGET"
-uv sync --frozen   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
+# --extra pi: spidev·gpiozero는 Pi에만 설치한다. 빼면 uv sync가 venv에서 지운다.
+uv sync --frozen --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
 
 echo "== 3. 서비스 중지 + DB 백업 =="
 sudo systemctl stop "$SERVICE" || true
@@ -51,7 +52,8 @@ sleep 3
 systemctl is-active --quiet "$SERVICE" || { echo "기동 실패"; journalctl -u "$SERVICE" -n 50 --no-pager; exit 1; }
 
 echo "== 6. 헬스체크 =="
-curl -fsS http://localhost:8000/api/v1/health | tee /dev/stderr | grep -q '"status"' || {
+# 경로에 버전 prefix가 없다 — 앱 계약과 같은 경로를 친다 (main.py의 라우터 등록).
+curl -fsS http://localhost:8000/health | tee /dev/stderr | grep -q '"status"' || {
     echo "헬스체크 실패"; exit 1;
 }
 
@@ -69,7 +71,7 @@ cat <<EOF
 
 롤백이 필요하면:
   sudo systemctl stop $SERVICE
-  git checkout --detach $PREV_COMMIT && uv sync --frozen
+  git checkout --detach $PREV_COMMIT && uv sync --frozen --extra pi
   cp $BACKUP_DIR/\$(basename "$DB_PATH").$STAMP $DB_PATH
   sudo systemctl start $SERVICE
 EOF

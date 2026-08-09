@@ -14,10 +14,14 @@ from tests.builders import a_frame, a_reading
 
 
 class TestIdempotentInsert:
-    def test_add_returns_true_first_time(
+    def test_stored_reading_carries_its_key(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
     ) -> None:
-        assert readings.add_if_absent(a_reading(now, device_id=device_id)) is True
+        """이 값이 없으면 이 기록을 가리키는 FK(alerts.reading_id)가 전부 빈다."""
+        stored = readings.add_if_absent(a_reading(now, device_id=device_id))
+
+        assert stored is not None
+        assert stored.key > 0
 
     def test_duplicate_frame_is_ignored(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
@@ -26,7 +30,7 @@ class TestIdempotentInsert:
         reading = a_reading(now, device_id=device_id)
         readings.add_if_absent(reading)
 
-        assert readings.add_if_absent(reading) is False
+        assert readings.add_if_absent(reading) is None
         assert readings.latest(device_id) is not None
 
 
@@ -90,8 +94,10 @@ class TestValueRoundTrip:
         assert stored is not None
         assert stored.frame.signature is not None
         assert stored.frame.signature.hold_s == 18
-        # 3요소 중 hold가 빠지면 시그니처 미성립 (알고리즘 P5)
-        assert stored.frame.signature.is_complete is False
+        # 3요소가 각각 왕복해야 한다 — 하나로 뭉치면 어느 게 빠졌는지 잃는다
+        assert stored.frame.signature.rise is True
+        assert stored.frame.signature.hold is False
+        assert stored.frame.signature.no_recover is True
 
     def test_signature_absent_stays_none(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime

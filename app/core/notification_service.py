@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from app.domain.alerting import Alert
 from app.domain.device import Device
 from app.domain.ports.clock import Clock
-from app.domain.ports.push_sender import PushSender
+from app.domain.ports.push_sender import PushResult, PushSender
 from app.domain.push import PushDelivery
 from app.infrastructure.db.repositories.push_deliveries import SqlAlchemyPushDeliveryRepository
 from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
@@ -27,10 +27,6 @@ class DispatchReport:
     delivered: int
     deactivated: int
 
-    @property
-    def failed(self) -> int:
-        return self.attempted - self.delivered
-
 
 @dataclass(frozen=True, slots=True)
 class NotificationService:
@@ -42,7 +38,7 @@ class NotificationService:
     backoff_base_s: float = 1.0
 
     async def dispatch(self, alert: Alert, device: Device) -> DispatchReport:
-        tokens = self.push_tokens.list_active(device.id or 0)
+        tokens = self.push_tokens.list_active(device.key)
         if not tokens:
             logger.info("no active push token", extra={"device": device.public_id})
             return DispatchReport(attempted=0, delivered=0, deactivated=0)
@@ -66,7 +62,7 @@ class NotificationService:
             result = await self.sender.send(token=token, alert=alert, device=device)
             self.deliveries.add(
                 PushDelivery(
-                    alert_id=alert.id or 0,
+                    alert_id=alert.key,
                     token=token,
                     attempt=attempt,
                     status="sent" if result.delivered else _failure_status(result),
@@ -93,6 +89,5 @@ class _Outcome:
     permanent_failure: bool
 
 
-def _failure_status(result: object) -> str:
-    permanent = getattr(result, "permanent_failure", False)
-    return "failed_permanent" if permanent else "failed_retryable"
+def _failure_status(result: PushResult) -> str:
+    return "failed_permanent" if result.permanent_failure else "failed_retryable"

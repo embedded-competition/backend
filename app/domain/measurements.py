@@ -1,8 +1,12 @@
 """측정 항목 SSOT.
 
 센서 값을 필드마다 선언하면 채널 하나 추가에 11개 파일을 고쳐야 했다.
-이 표 하나가 검증 범위·DB 컬럼명·와이어 순서·응답 그룹핑을 전부 규정한다.
-항목 추가 = 아래 enum 1줄 + spec 1줄 + DB 컬럼 1개.
+이 표 하나가 검증 범위·DB 컬럼명·와이어 순서를 규정한다 — 항목 추가는 아래 enum
+1줄 + spec 1줄 + DB 컬럼 1개로 끝난다.
+
+응답 DTO는 이 표를 따라 자동으로 늘어나지 **않는다**. 외부에 노출한 모양은 곧
+계약이므로 앱과 합의 없이 필드가 생기면 안 된다 — 노출할 항목은 api/schemas에서
+따로 고른다.
 """
 
 from __future__ import annotations
@@ -64,10 +68,6 @@ SPECS: dict[Measure, MeasureSpec] = {
 # 와이어·DB 양쪽이 쓰는 고정 순서. 새 항목은 반드시 끝에 추가한다
 # (중간 삽입은 프레임 오프셋을 밀어 노드 펌웨어와 어긋난다).
 ORDER: tuple[Measure, ...] = tuple(SPECS)
-
-
-def spec_of(measure: Measure) -> MeasureSpec:
-    return SPECS[measure]
 
 
 def channel_measures(channel: GasChannel) -> dict[Aspect, Measure]:

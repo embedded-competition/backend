@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from sqlalchemy import select
@@ -24,8 +24,13 @@ from app.infrastructure.db.orm import ReadingOrm
 class SqlAlchemyReadingRepository:
     session: Session
 
-    def add_if_absent(self, reading: Reading) -> bool:
-        """멱등 삽입. 조회 후 분기(check-then-act)는 경쟁 조건이라 upsert를 쓴다."""
+    def add_if_absent(self, reading: Reading) -> Reading | None:
+        """멱등 삽입. 조회 후 분기(check-then-act)는 경쟁 조건이라 upsert를 쓴다.
+
+        저장된 기록을 식별자와 함께 돌려준다 — 성공 여부만 돌려주면 방금 만든 행의
+        PK를 호출부가 알 수 없어 이 기록을 가리키는 FK가 전부 비게 된다.
+        이미 있으면 None이다. 중복은 실패가 아니라 LoRa 재전송의 정상 결과다.
+        """
         statement = (
             sqlite_insert(ReadingOrm)
             .values(**_to_columns(reading))
@@ -35,7 +40,10 @@ class SqlAlchemyReadingRepository:
             # RETURNING이 비면 충돌로 건너뛴 것 — rowcount보다 타입이 명확하다.
             .returning(ReadingOrm.id)
         )
-        return self.session.scalars(statement).one_or_none() is not None
+        stored_id = self.session.scalars(statement).one_or_none()
+        if stored_id is None:
+            return None
+        return replace(reading, id=stored_id)
 
     def list_in_range(
         self,

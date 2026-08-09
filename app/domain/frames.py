@@ -20,6 +20,9 @@ from app.domain.value_objects import (
     SignatureFlags,
 )
 
+_LAT_LIMIT = 90.0
+_LON_LIMIT = 180.0
+
 
 @dataclass(frozen=True, slots=True)
 class Coordinates:
@@ -27,9 +30,9 @@ class Coordinates:
     lon: float
 
     def __post_init__(self) -> None:
-        if not -90.0 <= self.lat <= 90.0:
+        if not -_LAT_LIMIT <= self.lat <= _LAT_LIMIT:
             raise ValueError(f"lat 범위 이탈: {self.lat}")
-        if not -180.0 <= self.lon <= 180.0:
+        if not -_LON_LIMIT <= self.lon <= _LON_LIMIT:
             raise ValueError(f"lon 범위 이탈: {self.lon}")
 
 
@@ -67,8 +70,3 @@ class TelemetryFrame:
         if deviation is None and slope is None:
             return None
         return ChannelReading(channel=channel, deviation=deviation, slope=slope)
-
-    @property
-    def channels(self) -> tuple[ChannelReading, ...]:
-        found = (self.channel(channel) for channel in GasChannel)
-        return tuple(c for c in found if c is not None)

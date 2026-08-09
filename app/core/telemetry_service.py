@@ -34,24 +34,20 @@ class TelemetryService:
     events: SqlAlchemyEventRepository
 
     def latest(self, device: Device) -> Reading | None:
-        return self.readings.latest(device.id or 0)
+        return self.readings.latest(device.key)
 
     def history(self, device: Device, day: date) -> DailyHistory:
         start = datetime.combine(day, time.min, tzinfo=UTC)
         end = start + timedelta(days=1)
-        rows = self.readings.list_in_range(
-            device.id or 0, start=start, end=end, limit=_DAY_SCAN_LIMIT
-        )
+        rows = self.readings.list_in_range(device.key, start=start, end=end, limit=_DAY_SCAN_LIMIT)
         return DailyHistory(
             day=day,
             samples=aggregate_hourly(rows),
-            events=self.events.list_in_range(
-                device.id or 0, start=start, end=end, limit=_EVENT_LIMIT
-            ),
+            events=self.events.list_in_range(device.key, start=start, end=end, limit=_EVENT_LIMIT),
         )
 
     def events_since(self, device: Device, since: datetime) -> list[Event]:
-        return self.events.list_since(device.id or 0, since=since, limit=_EVENT_LIMIT)
+        return self.events.list_since(device.key, since=since, limit=_EVENT_LIMIT)
 
     def fleet_comparison(self, device: Device) -> FleetComparison:
         return fleet.compare(device, self.devices.list_active())

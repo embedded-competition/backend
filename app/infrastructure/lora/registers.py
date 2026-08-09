@@ -52,6 +52,7 @@ class RadioConfig:
 
     spi_bus: int
     spi_device: int
+    reset_gpio: int
     frequency_hz: int
     spreading_factor: int
     bandwidth_hz: int
@@ -80,9 +81,13 @@ def modem_config2(config: RadioConfig) -> int:
     return (config.spreading_factor << 4) | 0x04
 
 
+_INT8_MAX = 127
+_INT8_WRAP = 256
+
+
 def decode_snr(raw: int) -> float:
     """PKT_SNR은 부호 있는 8비트, 1/4 dB 단위."""
-    return (raw - 256 if raw > 127 else raw) / 4.0
+    return (raw - _INT8_WRAP if raw > _INT8_MAX else raw) / 4.0
 
 
 def decode_rssi(raw: int) -> int:

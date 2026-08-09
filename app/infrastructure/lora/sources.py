@@ -51,17 +51,3 @@ class FakeFrameSource:
 
     async def close(self) -> None:
         self._closed = True
-
-
-class ReplayFrameSource:
-    """미리 만들어둔 프레임을 순서대로 방출한다. 테스트 전용."""
-
-    def __init__(self, frames: list[RawFrame]) -> None:
-        self._frames = frames
-
-    async def frames(self) -> AsyncIterator[RawFrame]:
-        for frame in self._frames:
-            yield frame
-
-    async def close(self) -> None:
-        return None

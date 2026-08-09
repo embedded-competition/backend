@@ -10,11 +10,14 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from app.core.ingest_service import IngestOutcome, IngestService
 from app.core.notification_service import NotificationService
+from app.domain.alerting import Alert
+from app.domain.device import Device
 from app.domain.exceptions import DeviceInactive, DeviceNotRegistered, FrameError
 from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.lora.frame import parse_frame
@@ -29,30 +32,22 @@ IngestFactory = Callable[[Session], IngestService]
 NotifierFactory = Callable[[Session], NotificationService]
 
 
+@dataclass(slots=True, kw_only=True)
 class FrameReceiver:
-    def __init__(
-        self,
-        *,
-        source: FrameSource,
-        session_scope: SessionScope,
-        ingest_factory: IngestFactory,
-        notifier_factory: NotifierFactory,
-        on_frame: Callable[[RawFrame], None] | None = None,
-    ) -> None:
-        self._source = source
-        self._session_scope = session_scope
-        self._ingest_factory = ingest_factory
-        self._notifier_factory = notifier_factory
-        self._on_frame = on_frame
-        self.stats = ReceiveStats()
+    source: FrameSource
+    session_scope: SessionScope
+    ingest_factory: IngestFactory
+    notifier_factory: NotifierFactory
+    on_frame: Callable[[RawFrame], None] | None = None
+    stats: ReceiveStats = field(default_factory=ReceiveStats)
 
     async def run(self) -> None:
         """취소될 때까지 돈다. 예외로 조용히 멈추지 않는 게 이 루프의 계약이다."""
         try:
-            async for raw in self._source.frames():
+            async for raw in self.source.frames():
                 self.stats.received += 1
-                if self._on_frame is not None:
-                    self._on_frame(raw)
+                if self.on_frame is not None:
+                    self.on_frame(raw)
                 await self._handle(raw)
                 if self.stats.should_report(_REPORT_EVERY):
                     logger.info("lora receive stats", extra=self.stats.as_dict())
@@ -61,7 +56,7 @@ class FrameReceiver:
             logger.info("lora receiver cancelled", extra=self.stats.as_dict())
             raise
         finally:
-            await self._source.close()
+            await self.source.close()
 
     async def _handle(self, raw: RawFrame) -> None:
         try:
@@ -83,13 +78,13 @@ class FrameReceiver:
             logger.exception("frame handling failed")
             return
 
-        if outcome is not None and outcome.needs_dispatch:
-            await self._dispatch(outcome)
+        if outcome is not None and outcome.needs_dispatch and outcome.alert is not None:
+            await self._dispatch(outcome.alert, outcome.device)
 
     def _store(self, raw: RawFrame) -> IngestOutcome | None:
         frame = parse_frame(raw.payload)
-        with self._session_scope() as session:
-            outcome = self._ingest_factory(session).ingest(frame, raw)
+        with self.session_scope() as session:
+            outcome = self.ingest_factory(session).ingest(frame, raw)
         if outcome.duplicate:
             self.stats.duplicate += 1
             return None
@@ -99,14 +94,15 @@ class FrameReceiver:
             self.stats.alerts += 1
         return outcome
 
-    async def _dispatch(self, outcome: IngestOutcome) -> None:
-        """저장 커밋 이후에만 호출된다 (롤백 시 유령 알림 방지)."""
-        assert outcome.alert is not None
+    async def _dispatch(self, alert: Alert, device: Device) -> None:
+        """저장 커밋 이후에만 호출된다 (롤백 시 유령 알림 방지).
+
+        alert를 인자로 받는다 — outcome을 통째로 넘기면 "alert가 있다"를
+        assert로 다시 주장해야 하고, assert는 `python -O`에서 사라진다.
+        """
         try:
-            with self._session_scope() as session:
-                report = await self._notifier_factory(session).dispatch(
-                    outcome.alert, outcome.device
-                )
+            with self.session_scope() as session:
+                report = await self.notifier_factory(session).dispatch(alert, device)
             logger.info("alert dispatched", extra=report.__dict__)
         except Exception:
             # 발송 실패가 측정값 저장을 되돌리지 않는다.

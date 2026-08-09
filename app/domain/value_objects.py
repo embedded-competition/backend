@@ -20,25 +20,14 @@ class AlertState(StrEnum):
         """이 상태로의 전이가 대응 대상 통지를 유발하는가."""
         return self in (AlertState.WATCH, AlertState.ALARM, AlertState.FAULT)
 
-    @property
-    def is_auto_clearable(self) -> bool:
-        """ALARM은 자동 해제 없음 — 해제는 명시적 명령으로만."""
-        return self is not AlertState.ALARM
-
 
 class GasChannel(StrEnum):
     VOC = "VOC"
     H2 = "H2"
     CO = "CO"
 
-    @property
-    def can_promote_alone(self) -> bool:
-        """단독 승격 경로가 있는 채널인가.
 
-        CO는 S3부터 증가하는 확증 채널이라 단독 승격 없음
-        (gas-detection-algorithm-design.md P4).
-        """
-        return self is not GasChannel.CO
+_HW_ID_MAX_LENGTH = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +39,7 @@ class DeviceId:
     def __post_init__(self) -> None:
         if not self.value:
             raise ValueError("device hw_id는 비어 있을 수 없다")
-        if len(self.value) > 32:
+        if len(self.value) > _HW_ID_MAX_LENGTH:
             raise ValueError(f"device hw_id가 너무 길다: {len(self.value)}자")
 
     def __str__(self) -> str:
@@ -63,7 +52,11 @@ class EventKind(StrEnum):
     STATE_CHANGE = "state_change"
     ACTION = "action"
     SUPPRESSED = "suppressed"
-    """오경보 차단 기록 — 습도 게이트 등으로 승격을 보류한 사실."""
+    """오경보 차단 기록 — 습도 게이트 등으로 승격을 보류한 사실.
+
+    아직 이 값을 쓰는 서버 경로는 없다. 앱 계약과 `ck_events_kind` 제약이 이미
+    이 값을 포함하므로 지우면 두 곳이 어긋난다.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,10 +71,6 @@ class SignatureFlags:
     hold: bool
     no_recover: bool
     hold_s: int
-
-    @property
-    def is_complete(self) -> bool:
-        return self.rise and self.hold and self.no_recover
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -45,17 +43,3 @@ def create_db_engine(
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     # 커밋 후 ORM 객체를 계속 쓰지 않는다 — repository가 domain 객체로 변환해 반환.
     return sessionmaker(bind=engine, expire_on_commit=False)
-
-
-@contextmanager
-def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
-    """트랜잭션 경계 1개. 백그라운드 수신 task가 프레임 단위로 사용한다."""
-    session = factory()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()

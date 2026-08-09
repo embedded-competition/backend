@@ -10,6 +10,19 @@ dependencies = [
     "pydantic-settings>=2.7",
     "sqlalchemy>=2.0.36",
     "alembic>=1.14",
+    # 런타임 의존이다. app.main → runtime.wiring → infrastructure.push.expo가
+    # 무조건 import하므로 dev group에 두면 `uv sync --no-dev` 배포가 뜨지 않는다.
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+# Pi 전용 하드웨어 라이브러리. 선언하지 않으면 `uv sync --frozen`이 lock에 없는
+# 패키지로 보고 venv에서 지운다 — 배포 때마다 LoRa가 조용히 죽는 경로다.
+# 마커로 linux에 묶어 Mac·CI 해석을 막는다.
+pi = [
+    "spidev>=3.6; sys_platform == 'linux'",
+    # SX1276 NRESET 제어. 없으면 칩을 이상 상태에서 꺼낼 방법이 없다.
+    "gpiozero>=2.0; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
@@ -17,10 +30,15 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
-    "httpx>=0.28",
+    "pytest-randomly>=3.16",
     "ruff>=0.9",
     "mypy>=1.14",
     "import-linter>=2.13",
+    "deptry>=0.20",
+    "vulture>=2.14",
+    "hypothesis>=6.125",
+    "schemathesis>=4.0",
+    "mutmut>=3.2",
 ]
 
 [build-system]
@@ -35,6 +53,9 @@ packages = ["app"]
 target-version = "py312"
 line-length = 100
 
+# 금지형 규칙만 켠다. "X가 존재해야 한다" 류(ANN·D)는 넣지 않는다 —
+# 규모에 맞는 구조를 막고 빈 칸 채우기를 유발한다. 부재·과잉은 lint가 아니라
+# 리뷰가 잡는다.
 [tool.ruff.lint]
 select = [
     "E",     # pycodestyle
@@ -45,10 +66,43 @@ select = [
     "ASYNC", # async 오용 — 이 프로젝트의 실제 위험
     "SIM",   # 단순화
     "RUF",
+    "DTZ",   # naive datetime — timestamps.require_aware 불변식의 정적 짝
+    "S",     # bandit. S101(assert)이 프로덕션 불변식 검사를 막는다
+    "TID",   # 상대 import 금지 (layer.md)
+    "FAST",  # FastAPI — Annotated 의존성, 미사용 path param
+    "RET",   # 불필요한 else/return — 생활체조 "else 금지"의 자동 강제
+    "ARG",   # 미사용 인자
+    "SLF",   # private 멤버 외부 접근
+    "FBT",   # boolean trap (positional bool)
+    "ERA",   # 주석 처리된 코드 (cleancode.md)
+    "C90",   # 순환 복잡도
+    "PL",    # pylint — 인자 수·매직값·분기 수
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+# cleancode.md의 "인자 ≤2"는 목표값이고 여기 값은 강제 가능한 하한이다.
+# 키워드 전용 인자는 호출부 가독성을 해치지 않아 5까지 허용한다.
+max-args = 5
+
+[tool.ruff.lint.per-file-ignores]
+# 테스트는 assert가 도구이고, 기대값 리터럴이 곧 명세다.
+"tests/*" = [
+    "S101", "S105", "S106", "S107",  # assert·더미 토큰이 테스트의 도구다
+    "PLR2004",                        # 기대값 리터럴이 곧 명세다
+    "SLF001",                         # 내부 상태 단정은 테스트의 권한
+    "PLR0913", "ARG001", "ARG002",    # fixture 주입은 인자 수로 세지 않는다
+    "FBT001",                         # parametrize의 bool 기대값
+]
+# 아키텍처 규칙은 위반 코드를 문자열 fixture로 들고 있다.
+"tests/architecture/*" = ["ERA001"]
+# Alembic 자동 생성 리비전은 포맷을 손대지 않는다.
+"migrations/versions/*" = ["ERA001", "E501"]
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -67,8 +121,55 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-q --strict-markers"
-markers = ["slow: 기본 실행에서 제외 가능한 느린 테스트"]
+# contract는 스펙에서 케이스를 생성하느라 느리다 — `make deep`에서만 돈다.
+addopts = "-q --strict-markers -m 'not contract'"
+markers = [
+    "slow: 기본 실행에서 제외 가능한 느린 테스트",
+    "contract: OpenAPI 스펙에서 생성한 계약 테스트 (느림 — make deep에서 실행)",
+]
+
+# ---------------------------------------------------------------- deptry
+# 선언한 의존성과 실제 import를 대조한다. 로컬은 dev 포함 설치라
+# `uv sync --no-dev` 배포에서만 터지는 누락을 잡지 못한다.
+[tool.deptry]
+known_first_party = ["app"]
+
+[tool.deptry.per_rule_ignores]
+# ASGI 서버는 CLI로만 쓴다 — import 되지 않는 것이 정상.
+DEP002 = ["uvicorn"]
+
+# ---------------------------------------------------------------- vulture
+# tests를 스캔에 넣으면 테스트만 부르는 코드가 살아 있는 것으로 보인다 — 유스케이스
+# 어디에서도 안 쓰이는 도메인 규칙이 그렇게 쌓였다. app만 스캔해 "제품 경로에서
+# 죽은 것"을 드러낸다. 프레임워크가 이름으로 호출하는 것만 제외하고, 남은 필드 선언
+# 잡음은 whitelist가 흡수한다.
+[tool.vulture]
+paths = ["app", "migrations", "scripts", "vulture_whitelist.py"]
+min_confidence = 60
+sort_by_size = true
+ignore_decorators = [
+    "@router.get",
+    "@router.post",
+    "@app.exception_handler",
+]
+
+# ---------------------------------------------------------------- mutmut
+# 커버리지는 "실행됨"만 증명한다. 순수 계산 층에서만 돌려 "검증됨"을 확인한다.
+[tool.mutmut]
+source_paths = ["app/domain/", "app/core/"]
+# 순수 계산 층만 변이시키되, 그 층을 실제로 덮는 테스트는 unit+integration 양쪽에
+# 있다. unit만 지정하면 대부분이 "no tests"로 빠져 결과가 공허해진다.
+pytest_add_cli_args_test_selection = ["tests/unit/", "tests/integration/"]
+# mutate 대상만 복사하면 conftest가 import하는 나머지 계층이 없어 수집이 깨진다.
+# 변이는 domain·core에만 넣고, 앱 전체는 그대로 복사해 import를 성립시킨다.
+also_copy = [
+    "app/api/",
+    "app/runtime/",
+    "app/infrastructure/",
+    "app/main.py",
+    "migrations/",
+    "alembic.ini",
+]
 
 # ---------------------------------------------------------------- import-linter
 # 계층 경계를 관습이 아니라 계약으로 강제한다. grep 검증의 대체물이고
@@ -108,6 +209,19 @@ source_modules = ["app.core"]
 # 타입 중복만 만들어 제거했고, 그 대가로 core가 저장소 구현 타입을 참조한다.
 # 두 번째 구현이 생기면 Protocol을 복원하고 이 예외를 지운다.
 forbidden_modules = ["app.infrastructure.lora", "app.infrastructure.push"]
+
+[[tool.importlinter.contracts]]
+# 라우터·DTO에 쿼리 조각이 새는 것을 그래프 레벨에서 막는다.
+# app.api 전체가 아니라 routes·schemas만 거는 이유: health 라우터가
+# `text("SELECT 1")`로 DB 생존을 확인한다. 그건 의도적 예외이므로
+# 계약 범위를 좁혀 명시한다 — 예외를 넓히는 대신 대상을 좁힌다.
+name = "라우터·DTO는 영속성 기술을 모른다"
+type = "forbidden"
+source_modules = ["app.api.routes.devices", "app.api.routes.telemetry", "app.api.routes.alerts", "app.api.schemas"]
+forbidden_modules = ["sqlalchemy"]
+# 저장소 어댑터를 거친 전이 의존은 정상이다. 직접 import만 막아 쿼리 조각이
+# 라우터·DTO로 새는 것을 차단한다.
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "infrastructure는 상위 계층을 모른다"

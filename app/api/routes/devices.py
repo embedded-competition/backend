@@ -40,8 +40,10 @@ async def register_device(
     )
 
 
+# FAST003 noqa 근거: device_id는 AuthenticatedDevice 의존성이 Path로 받아 소유권
+# 검증에 쓴다. ruff는 의존성 시그니처를 따라가지 못한다.
 @router.post(
-    "/{device_id}/push-token",
+    "/{device_id}/push-token",  # noqa: FAST003
     response_model=PushTokenResponse,
     summary="Expo 푸시 토큰 등록 (멱등)",
 )

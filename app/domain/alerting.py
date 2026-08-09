@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.domain.exceptions import AlertAlreadyAcknowledged
+from app.domain.stored import require_stored
 from app.domain.timestamps import require_aware
 from app.domain.value_objects import AlertState, EventKind
 
@@ -29,6 +30,11 @@ class Alert:
             raise ValueError("전이가 아닌 값으로 Alert를 만들 수 없다")
         self.occurred_at = require_aware(self.occurred_at, "occurred_at")
         self.detected_at = require_aware(self.detected_at, "detected_at")
+
+    @property
+    def key(self) -> int:
+        """저장된 경보의 식별자. 저장 전에 부르면 실패한다."""
+        return require_stored(self.id, "alert")
 
     @property
     def is_active(self) -> bool:

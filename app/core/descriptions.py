@@ -19,7 +19,3 @@ def describe_transition(from_state: AlertState, to_state: AlertState) -> str:
 
 def describe_release(note: str | None) -> str:
     return "사용자 요청으로 경보 해제됨" + (f" ({note})" if note else "")
-
-
-def describe_suppression(reason: str) -> str:
-    return f"{reason}으로 승격 보류 (오경보 아님)"

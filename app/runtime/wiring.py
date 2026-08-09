@@ -51,8 +51,8 @@ def build_ingest_service(session: Session) -> IngestService:
 
 
 def create_push_sender(settings: Settings) -> PushSender:
-    """자격증명이 없으면 로그만 남기는 구현 — 알람 흐름은 그대로 검증된다."""
-    if settings.fcm_credentials_path is None:
+    """log 어댑터는 실기기 없이 알람 흐름을 그대로 검증한다."""
+    if settings.push_delivery == "log":
         return LoggingPushSender()
     return ExpoPushSender(timeout_s=settings.push_timeout_s)
 

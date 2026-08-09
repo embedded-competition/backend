@@ -15,7 +15,8 @@ from tests.builders import a_frame, a_reading
 class TestValidation:
     def test_naive_datetime_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="timezone-aware"):
-            a_reading(datetime(2026, 8, 8, 12, 0, 0))
+            # naive datetime이 이 테스트의 입력이다.
+            a_reading(datetime(2026, 8, 8, 12, 0, 0))  # noqa: DTZ001
 
     @pytest.mark.parametrize("humidity", [-1.0, 100.1])
     def test_humidity_out_of_range_is_rejected(self, now: datetime, humidity: float) -> None:
@@ -28,12 +29,13 @@ class TestValidation:
             a_reading(now, radio=RadioQuality(rssi=3))
 
 
-class TestClockSkew:
-    def test_skew_is_exposed_not_corrected(self, now: datetime) -> None:
+class TestNodeAndServerTime:
+    def test_both_times_are_kept_apart(self, now: datetime) -> None:
+        """노드 시각을 서버 수신 시각으로 보정하지 않는다 — 어긋남이 드러나야 한다."""
         reading = a_reading(now, received_at=now + timedelta(seconds=42))
 
-        assert reading.clock_skew_s == 42.0
-        assert reading.measured_at == now  # 보정하지 않는다
+        assert reading.measured_at == now
+        assert reading.received_at == now + timedelta(seconds=42)
 
 
 class TestChannelLookup:

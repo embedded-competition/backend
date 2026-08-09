@@ -4,11 +4,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "pi"]
 LoraSource = Literal["sx1276", "fake"]
+PushDelivery = Literal["expo", "log"]
 
 
 class Settings(BaseSettings):
@@ -34,7 +35,8 @@ class Settings(BaseSettings):
     lora_source: LoraSource = "fake"
     lora_spi_bus: int = 0
     lora_spi_device: int = 0
-    lora_dio0_gpio: int = 25
+    # 칩이 이상 상태로 남으면 레지스터 설정만으로는 못 빠져나온다 — 초기화 전에
+    # 하드웨어 리셋을 건다. DIO0은 쓰지 않는다 (radio.py가 IRQ 레지스터를 폴링).
     lora_reset_gpio: int = 22
     # 한국 ISM 대역 917.0~923.5MHz. duty cycle 제약 준수 필요.
     lora_frequency_hz: int = 922_000_000
@@ -56,10 +58,10 @@ class Settings(BaseSettings):
     heartbeat_interval_s: int = 300
     offline_after_missed_beats: int = 3
 
-    # --- 푸시 (FCM) ---------------------------------------------------
-    # 비밀값에 기본값을 주지 않는다 — 없으면 부팅이 실패해야 한다.
-    fcm_credentials_path: Path | None = None
-    fcm_project_id: SecretStr | None = None
+    # --- 푸시 (Expo) --------------------------------------------------
+    # 어떤 어댑터로 보낼지를 직접 고른다. 자격증명 유무로 유추하면 발송기와 무관한
+    # 설정이 발송을 좌우한다. 기본은 log — 실기기 없이 알람 흐름을 검증한다.
+    push_delivery: PushDelivery = "log"
     push_timeout_s: float = 10.0
     push_max_attempts: int = 3
 

@@ -53,7 +53,7 @@ class DeviceService:
         token = identity.new_device_token()
         self.access_tokens.add(
             AccessToken(
-                device_id=device.id or 0,
+                device_id=device.key,
                 token_hash=identity.hash_token(token),
                 created_at=now,
             )
@@ -84,7 +84,7 @@ class DeviceService:
         """멱등 — 같은 토큰 재등록이 중복 행을 만들지 않는다."""
         return self.push_tokens.upsert(
             PushToken(
-                device_id=device.id or 0,
+                device_id=device.key,
                 token=token,
                 platform=platform,
                 registered_at=self.clock.now(),

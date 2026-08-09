@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 from app.domain.value_objects import AlertState
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
-from tests.builders import an_alert
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from tests.builders import a_device, an_alert
 
 
 class TestActiveAlerts:
@@ -20,9 +21,25 @@ class TestActiveAlerts:
         closed.acknowledge(at=now)
         alerts.save(closed)
 
-        active = alerts.list_active()
+        active = alerts.list_active_for(device_id)
 
         assert [a.id for a in active] == [open_alert.id]
+
+    def test_other_devices_alerts_are_excluded(
+        self,
+        alerts: SqlAlchemyAlertRepository,
+        devices: SqlAlchemyDeviceRepository,
+        device_id: int,
+        now: datetime,
+    ) -> None:
+        """전체를 읽어 파이썬에서 거르면 기기가 늘수록 읽는 양이 같이 는다."""
+        neighbour = devices.save(
+            a_device(public_id="dev_other", mac="AA:BB:CC:00:00:01", hw_id=None, registered_at=now)
+        )
+        mine = alerts.add(an_alert(now, device_id=device_id))
+        alerts.add(an_alert(now, device_id=neighbour.key))
+
+        assert [a.id for a in alerts.list_active_for(device_id)] == [mine.id]
 
 
 class TestAcknowledge:
@@ -33,7 +50,7 @@ class TestAcknowledge:
         alert.acknowledge(at=now + timedelta(minutes=3), note="현장 확인")
         alerts.save(alert)
 
-        reloaded = alerts.get(alert.id or 0)
+        reloaded = alerts.get(alert.key)
 
         assert reloaded is not None
         assert reloaded.is_active is False

@@ -79,6 +79,10 @@ class LoggingPushSender:
         return PushResult(delivered=True)
 
 
+# 앞 12자 + 뒤 4자를 남기려면 최소 이만큼은 돼야 원문 복원이 불가능하다.
+_MASKABLE_LENGTH = 20
+
+
 def _mask(token: str) -> str:
     """토큰은 비밀값이다 — 전체를 로그에 남기지 않는다."""
-    return f"{token[:12]}…{token[-4:]}" if len(token) > 20 else "…"
+    return f"{token[:12]}…{token[-4:]}" if len(token) > _MASKABLE_LENGTH else "…"

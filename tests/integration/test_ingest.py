@@ -105,6 +105,23 @@ class TestIdempotency:
 
 
 class TestTransition:
+    def test_alert_points_at_the_reading_that_caused_it(
+        self, ingest: IngestService, session: Session, registered: Device, now: datetime
+    ) -> None:
+        """이 링크가 비면 경보의 근거가 된 측정값을 DB에서 되짚을 수 없다."""
+        ingest.ingest(_frame(1, AlertState.NORMAL, now), _raw(now))
+
+        outcome = ingest.ingest(
+            _frame(2, AlertState.ALARM, now + timedelta(minutes=1)),
+            _raw(now + timedelta(minutes=1)),
+        )
+
+        assert outcome.alert is not None
+        assert outcome.alert.reading_id == outcome.reading.key
+        stored = SqlAlchemyAlertRepository(session).get(outcome.alert.key)
+        assert stored is not None
+        assert stored.reading_id == outcome.reading.key
+
     def test_same_state_creates_no_alert(
         self, ingest: IngestService, registered: Device, now: datetime
     ) -> None:
@@ -132,7 +149,7 @@ class TestTransition:
         assert outcome.alert.to_state is AlertState.ALARM
         assert outcome.needs_dispatch is True
         events = SqlAlchemyEventRepository(session).list_since(
-            registered.id or 0, since=now - timedelta(hours=1), limit=10
+            registered.key, since=now - timedelta(hours=1), limit=10
         )
         assert events[0].description == "정상 → 경보 전환"
 
@@ -165,7 +182,7 @@ class TestStoredFields:
         """RSSI·SNR은 유실 원인 추적의 유일한 지표다."""
         ingest.ingest(_frame(1, AlertState.NORMAL, now), _raw(now))
 
-        stored = SqlAlchemyReadingRepository(session).latest(registered.id or 0)
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
 
         assert stored is not None
         assert stored.radio.rssi == -74
@@ -177,8 +194,8 @@ class TestStoredFields:
         received = now + timedelta(seconds=42)
         ingest.ingest(_frame(1, AlertState.NORMAL, now), _raw(received))
 
-        stored = SqlAlchemyReadingRepository(session).latest(registered.id or 0)
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
 
         assert stored is not None
         assert stored.measured_at == now
-        assert stored.clock_skew_s == 42.0
+        assert stored.received_at == received

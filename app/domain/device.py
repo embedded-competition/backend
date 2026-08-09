@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.domain.stored import require_stored
 from app.domain.timestamps import require_aware
 from app.domain.value_objects import AlertState, DeviceId
 
@@ -32,11 +33,10 @@ class Device:
         if not self.label.strip():
             raise ValueError("device label은 비어 있을 수 없다")
 
-    def is_offline(self, *, now: datetime, threshold_s: int) -> bool:
-        """무응답 판정. 한 번도 수신한 적 없으면 offline으로 본다."""
-        if self.last_seen_at is None:
-            return True
-        return (now - self.last_seen_at).total_seconds() > threshold_s
+    @property
+    def key(self) -> int:
+        """저장된 기기의 식별자. 저장 전에 부르면 실패한다."""
+        return require_stored(self.id, "device")
 
     def missed_frames_since(self, seq: int) -> int:
         """seq 건너뜀 수. 유실률은 안테나·거리 문제의 유일한 정량 지표다."""

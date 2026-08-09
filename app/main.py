@@ -8,9 +8,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+from alembic.runtime.migration import MigrationContext
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import Engine
 
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routes import alerts, devices, health, telemetry
@@ -20,6 +21,7 @@ from app.infrastructure.db.session import create_db_engine, create_session_facto
 from app.runtime import wiring
 from app.runtime.lora import create_frame_source
 from app.runtime.receiver import FrameReceiver
+from app.runtime.state import STATE_ATTRIBUTE, ReceiverLiveness, RuntimeState
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +36,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_db_engine(
         settings.database_path, busy_timeout_ms=settings.sqlite_busy_timeout_ms
     )
-    session_factory = create_session_factory(engine)
-    app.state.session_factory = session_factory
-    app.state.settings = settings
-    app.state.lora_last_frame_at = None
-    app.state.alembic_revision = None
+    state = RuntimeState(
+        session_factory=create_session_factory(engine),
+        schema_revision=_schema_revision(engine),
+        lora=ReceiverLiveness(enabled=settings.lora_enabled),
+    )
+    setattr(app.state, STATE_ATTRIBUTE, state)
 
     receiver: FrameReceiver | None = None
-    task: asyncio.Task[None] | None = None
     if settings.lora_enabled:
-        receiver = _build_receiver(app, settings, session_factory)
-        task = asyncio.create_task(receiver.run(), name="lora-receiver")
-        # 지역 변수로만 두면 GC로 사라진다.
-        app.state.lora_task = task
-        app.state.lora_receiver = receiver
-        task.add_done_callback(_log_receiver_death)
-    app.state.lora_running = settings.lora_enabled
+        receiver = _build_receiver(state, settings)
+        state.lora.task = asyncio.create_task(receiver.run(), name="lora-receiver")
+        state.lora.task.add_done_callback(_log_receiver_death)
 
     logger.info(
         "app started",
@@ -57,17 +55,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "version": VERSION,
             "environment": settings.environment,
             "database": str(settings.database_path),
+            "schema_revision": state.schema_revision,
             "lora_source": settings.lora_source,
+            "push_delivery": settings.push_delivery,
         },
     )
     try:
         yield
     finally:
-        app.state.lora_running = False
-        if task is not None:
-            task.cancel()
-            # 취소된 task를 회수하지 않으면 종료가 매달린다.
-            await asyncio.gather(task, return_exceptions=True)
+        await state.lora.stop()
         engine.dispose()
         logger.info(
             "app stopped",
@@ -75,16 +71,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
 
-def _build_receiver(
-    app: FastAPI, settings: Settings, factory: sessionmaker[Session]
-) -> FrameReceiver:
+def _schema_revision(engine: Engine) -> str | None:
+    """적용된 Alembic 리비전. 배포된 코드와 스키마가 어긋났는지 /health로 대조한다."""
+    with engine.connect() as connection:
+        return MigrationContext.configure(connection).get_current_revision()
+
+
+def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
     def remember_last_frame(_: RawFrame) -> None:
         # 헬스체크가 "무선 두절"을 판단하는 근거.
-        app.state.lora_last_frame_at = datetime.now(UTC)
+        state.lora.observe(datetime.now(UTC))
 
     return FrameReceiver(
         source=create_frame_source(settings),
-        session_scope=wiring.session_scope_factory(factory),
+        session_scope=wiring.session_scope_factory(state.session_factory),
         ingest_factory=wiring.build_ingest_service,
         notifier_factory=wiring.notifier_factory(settings, wiring.create_push_sender(settings)),
         on_frame=remember_last_frame,
@@ -101,7 +101,11 @@ def _log_receiver_death(task: asyncio.Task[None]) -> None:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """앱 팩토리. 테스트가 설정을 바꿔 다시 만들 수 있어야 한다."""
+    """앱 팩토리. 테스트가 설정을 바꿔 다시 만들 수 있어야 한다.
+
+    모듈 전역 인스턴스를 두지 않는다 — import만으로 설정을 읽고 라우터를 붙이면
+    읽어 들이는 일과 실행하는 일이 한 덩어리가 된다. 배포는 `--factory`로 부른다.
+    """
     settings = settings or get_settings()
     app = FastAPI(
         title="Orca Backend",
@@ -129,6 +133,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(telemetry.router)
     app.include_router(alerts.router)
     return app
-
-
-app = create_app()

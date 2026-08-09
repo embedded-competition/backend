@@ -21,7 +21,9 @@ class RegisterBus(Protocol):
 
 class SpiRegisterBus:
     def __init__(self, bus: int, device: int, *, max_speed_hz: int = 5_000_000) -> None:
-        import spidev  # 지연 import — 하드웨어 없는 환경 보호
+        # PLC0415 noqa 근거: spidev는 ARM 전용이라 최상위 import하면 Mac·CI에서
+        # 모듈 로드 자체가 실패한다. 계층 회피가 아니라 플랫폼 격리다.
+        import spidev  # noqa: PLC0415
 
         self._spi: Any = spidev.SpiDev()
         self._spi.open(bus, device)

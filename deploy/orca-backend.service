@@ -22,7 +22,7 @@ EnvironmentFile=/home/orca/backend/.env
 
 # uv가 lock에 고정된 버전으로 실행한다. --frozen 없이 띄우지 않는다.
 ExecStart=/home/orca/.local/bin/uv run --frozen \
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 1
 
 Restart=always
 RestartSec=5

@@ -27,7 +27,7 @@ class AlertService:
     clock: Clock
 
     def active_for(self, device: Device) -> list[Alert]:
-        return [a for a in self.alerts.list_active() if a.device_id == device.id]
+        return self.alerts.list_active_for(device.key)
 
     def request_release(self, device: Device, note: str | None = None) -> Alert:
         """해제 승인 규칙 (내부): 활성 ALARM 하나만 대상이다.
@@ -43,8 +43,8 @@ class AlertService:
         saved = self.alerts.save(target)
         self.events.add(
             Event(
-                device_id=device.id or 0,
-                alert_id=saved.id,
+                device_id=device.key,
+                alert_id=saved.key,
                 kind=EventKind.ACTION,
                 occurred_at=now,
                 description=describe_release(note),

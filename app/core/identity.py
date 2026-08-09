@@ -8,26 +8,20 @@ import secrets
 
 from app.domain.exceptions import InvalidMac
 
-_MAC_PATTERN = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
 _NON_HEX = re.compile(r"[^0-9A-Fa-f]")
-_TOKEN_PREFIX = "dtk_"
+_MAC_HEX_LENGTH = 12
+_OCTET = 2
+# S105 noqa 근거: 비밀값이 아니라 토큰 문자열의 종류 식별 prefix다.
+_TOKEN_PREFIX = "dtk_"  # noqa: S105
 _PUBLIC_ID_PREFIX = "dev_"
 
 
 def normalize_mac(raw: str) -> str:
     """앱의 services/deviceRegistry.ts normalizeMac과 같은 형식으로 맞춘다."""
     cleaned = _NON_HEX.sub("", raw).upper()
-    if len(cleaned) != 12:
+    if len(cleaned) != _MAC_HEX_LENGTH:
         raise InvalidMac(f"MAC 형식이 아니다: {raw!r}")
-    mac = ":".join(cleaned[i : i + 2] for i in range(0, 12, 2))
-    if not _MAC_PATTERN.match(mac):
-        raise InvalidMac(f"MAC 형식이 아니다: {raw!r}")
-    return mac
-
-
-def hw_id_from_mac(mac: str) -> str:
-    """노드가 프레임에 싣는 형태 — 구분자 없는 소문자 hex."""
-    return mac.replace(":", "").lower()
+    return ":".join(cleaned[i : i + _OCTET] for i in range(0, _MAC_HEX_LENGTH, _OCTET))
 
 
 def hash_token(token: str) -> str:

@@ -21,9 +21,9 @@ from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRe
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.infrastructure.lora.frame import build_frame
 from app.infrastructure.lora.scenario import DEFAULT_SCENARIO, ScenarioFrameFactory
-from app.infrastructure.lora.sources import ReplayFrameSource
 from app.runtime import wiring
 from app.runtime.receiver import FrameReceiver
+from tests.fakes.lora import ReplayFrameSource
 from tests.fakes.push import RecordingPushSender
 
 HW_ID = "aabbccddeeff"
@@ -37,7 +37,7 @@ def registered(session: Session, now: datetime) -> Device:
     )
     SqlAlchemyPushTokenRepository(session).upsert(
         PushToken(
-            device_id=device.id or 0,
+            device_id=device.key,
             token="ExponentPushToken[demo]",
             registered_at=now,
         )
@@ -173,7 +173,7 @@ class TestPushRetry:
         await receiver.run()
         session.rollback()
 
-        tokens = SqlAlchemyPushTokenRepository(session).list_active(registered.id or 0)
+        tokens = SqlAlchemyPushTokenRepository(session).list_active(registered.key)
         assert tokens == []  # 무효 토큰을 방치하면 실패율이 계속 쌓인다
 
     async def test_alerts_are_recorded(
@@ -189,6 +189,6 @@ class TestPushRetry:
         await receiver.run()
         session.rollback()
 
-        alerts = SqlAlchemyAlertRepository(session).list_for_device(registered.id or 0, limit=10)
+        alerts = SqlAlchemyAlertRepository(session).list_active_for(registered.key)
         assert len(alerts) == 2
-        assert SqlAlchemyReadingRepository(session).latest(registered.id or 0)
+        assert SqlAlchemyReadingRepository(session).latest(registered.key)

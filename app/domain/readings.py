@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
+from app.domain.stored import require_stored
 from app.domain.timestamps import require_aware
 from app.domain.value_objects import AlertState, ChannelReading, GasChannel
 
@@ -40,6 +41,11 @@ class Reading:
     def __post_init__(self) -> None:
         self.received_at = require_aware(self.received_at, "received_at")
 
+    @property
+    def key(self) -> int:
+        """저장된 수신 기록의 식별자. 저장 전에 부르면 실패한다."""
+        return require_stored(self.id, "reading")
+
     # frame으로 위임 — 호출부가 reading.frame.state를 매번 쓰지 않게
     @property
     def seq(self) -> int:
@@ -52,11 +58,6 @@ class Reading:
     @property
     def measured_at(self) -> datetime:
         return self.frame.measured_at
-
-    @property
-    def clock_skew_s(self) -> float:
-        """노드 시각과 서버 수신 시각의 차이. 값을 보정하지 않고 드러낸다."""
-        return (self.received_at - self.frame.measured_at).total_seconds()
 
     def value(self, measure: Measure) -> float | None:
         return self.frame.value(measure)

@@ -19,7 +19,7 @@ class UtcDateTime(TypeDecorator[datetime]):
     impl = String(32)
     cache_ok = True
 
-    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> str | None:
+    def process_bind_param(self, value: datetime | None, _dialect: Dialect) -> str | None:
         if value is None:
             return None
         if value.tzinfo is None:
@@ -27,7 +27,7 @@ class UtcDateTime(TypeDecorator[datetime]):
         utc = value.astimezone(UTC)
         return utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
-    def process_result_value(self, value: Any, dialect: Dialect) -> datetime | None:
+    def process_result_value(self, value: Any, _dialect: Dialect) -> datetime | None:
         if value is None:
             return None
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))

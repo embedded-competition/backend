@@ -24,6 +24,9 @@ _CRC = "<H"
 
 # int16 결측 센티널. 0으로 채우면 "정상 판독 0"과 구분되지 않는다.
 ABSENT = -32768
+# 센티널을 뺀 유효 범위. 하한이 -32768이 아닌 이유가 그것이다.
+SCALED_MIN = -32767
+SCALED_MAX = 32767
 _SCALE = 100.0
 
 FLAG_HAS_GPS = 1 << 0
@@ -133,6 +136,6 @@ def scale(value: float | None) -> int:
     if value is None:
         return ABSENT
     scaled = round(value * _SCALE)
-    if not -32767 <= scaled <= 32767:
+    if not SCALED_MIN <= scaled <= SCALED_MAX:
         raise FrameFieldError(f"스케일 후 int16 범위 초과: {value}")
     return scaled
