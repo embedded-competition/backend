@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from app.domain.models import Alert, Device, Event, PushToken, Reading
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.measurements import Measure
+from app.domain.models import (
+    Alert,
+    Device,
+    Event,
+    PushToken,
+    RadioQuality,
+    Reading,
+)
 from app.domain.value_objects import (
     AlertState,
-    ChannelReading,
     DeviceId,
     EventKind,
-    GasChannel,
     SignatureFlags,
 )
 from app.infrastructure.db.orm import (
@@ -58,39 +65,32 @@ def apply_device(row: DeviceOrm, device: Device) -> DeviceOrm:
 
 
 def reading_to_domain(row: ReadingOrm) -> Reading:
-    channels = tuple(
-        ChannelReading(channel=channel, deviation=dev, slope=slope)
-        for channel, dev, slope in (
-            (GasChannel.VOC, row.voc_dev, row.voc_slope),
-            (GasChannel.H2, row.h2_dev, row.h2_slope),
-            (GasChannel.CO, row.co_dev, row.co_slope),
-        )
-        # 값이 하나도 없는 채널은 도메인에 올리지 않는다 (미장착 센서와 구분)
-        if dev is not None or slope is not None
-    )
+    """센서 값은 Measure enum이 컬럼명이라 루프 하나로 끝난다."""
     return Reading(
         id=row.id,
         device_id=row.device_id,
-        seq=row.seq,
-        measured_at=row.measured_at,
         received_at=row.received_at,
-        frame_version=row.frame_version,
-        state=AlertState(row.state),
-        latched=row.latched,
-        channels=channels,
-        signature=_signature_to_domain(row),
-        temp_c=row.temp_c,
-        humidity_pct=row.humidity_pct,
-        d_rh_dt=row.d_rh_dt,
-        pressure_dev=row.pressure_dev,
-        pressure_rate=row.pressure_rate,
-        water=row.water,
-        batt_mv=row.batt_mv,
-        lat=row.lat,
-        lon=row.lon,
-        rssi=row.rssi,
-        snr=row.snr,
+        radio=RadioQuality(rssi=row.rssi, snr=row.snr),
+        frame=TelemetryFrame(
+            version=row.frame_version,
+            seq=row.seq,
+            measured_at=row.measured_at,
+            state=AlertState(row.state),
+            latched=bool(row.latched),
+            values=_values_of(row),
+            signature=_signature_to_domain(row),
+            batt_mv=row.batt_mv,
+            water=row.water,
+            location=Coordinates(lat=row.lat, lon=row.lon)
+            if row.lat is not None and row.lon is not None
+            else None,
+        ),
     )
+
+
+def _values_of(row: ReadingOrm) -> dict[Measure, float]:
+    found = ((measure, getattr(row, measure.value)) for measure in Measure)
+    return {measure: value for measure, value in found if value is not None}
 
 
 def _signature_to_domain(row: ReadingOrm) -> SignatureFlags | None:
@@ -107,41 +107,29 @@ def _signature_to_domain(row: ReadingOrm) -> SignatureFlags | None:
 
 def reading_to_columns(reading: Reading) -> dict[str, object]:
     """멱등 삽입(ON CONFLICT)에 쓰려고 dict로 낸다."""
-    values: dict[str, object] = {
+    frame = reading.frame
+    columns: dict[str, object] = {
         "device_id": reading.device_id,
-        "seq": reading.seq,
-        "measured_at": reading.measured_at,
+        "seq": frame.seq,
+        "measured_at": frame.measured_at,
         "received_at": reading.received_at,
-        "frame_version": reading.frame_version,
-        "state": reading.state.value,
-        "latched": reading.latched,
-        "temp_c": reading.temp_c,
-        "humidity_pct": reading.humidity_pct,
-        "d_rh_dt": reading.d_rh_dt,
-        "pressure_dev": reading.pressure_dev,
-        "pressure_rate": reading.pressure_rate,
-        "water": reading.water,
-        "batt_mv": reading.batt_mv,
-        "lat": reading.lat,
-        "lon": reading.lon,
-        "rssi": reading.rssi,
-        "snr": reading.snr,
-        "sig_rise": reading.signature.rise if reading.signature else None,
-        "sig_hold": reading.signature.hold if reading.signature else None,
-        "sig_no_recover": reading.signature.no_recover if reading.signature else None,
-        "sig_hold_s": reading.signature.hold_s if reading.signature else None,
-        "voc_dev": None,
-        "voc_slope": None,
-        "h2_dev": None,
-        "h2_slope": None,
-        "co_dev": None,
-        "co_slope": None,
+        "frame_version": frame.version,
+        "state": frame.state.value,
+        "latched": frame.latched,
+        "water": frame.water,
+        "batt_mv": frame.batt_mv,
+        "lat": frame.location.lat if frame.location else None,
+        "lon": frame.location.lon if frame.location else None,
+        "rssi": reading.radio.rssi,
+        "snr": reading.radio.snr,
+        "sig_rise": frame.signature.rise if frame.signature else None,
+        "sig_hold": frame.signature.hold if frame.signature else None,
+        "sig_no_recover": frame.signature.no_recover if frame.signature else None,
+        "sig_hold_s": frame.signature.hold_s if frame.signature else None,
     }
-    for measurement in reading.channels:
-        prefix = measurement.channel.value.lower()
-        values[f"{prefix}_dev"] = measurement.deviation
-        values[f"{prefix}_slope"] = measurement.slope
-    return values
+    # Measure.value == 컬럼명이라 항목 추가 시 이 함수는 안 바뀐다.
+    columns.update({measure.value: frame.values.get(measure) for measure in Measure})
+    return columns
 
 
 def alert_to_domain(row: AlertOrm) -> Alert:

@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.api.deps import SessionDep, SettingsDep
 from app.core.alert_service import AlertService
 from app.core.device_service import DeviceService
 from app.core.telemetry_service import TelemetryService
@@ -19,6 +18,7 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyPushTokenRepository,
     SqlAlchemyReadingRepository,
 )
+from app.runtime.deps import SessionDep, SettingsDep
 
 
 def device_service_dep(session: SessionDep, settings: SettingsDep) -> DeviceService:

@@ -7,8 +7,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.domain.exceptions import AlertAlreadyAcknowledged
-from app.domain.models import Alert, Device, Reading
-from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasChannel
+from app.domain.frames import TelemetryFrame
+from app.domain.measurements import Measure
+from app.domain.models import Alert, Device, RadioQuality, Reading
+from app.domain.value_objects import AlertState, DeviceId, GasChannel
 
 
 def _device(**kwargs: object) -> Device:
@@ -23,13 +25,23 @@ def _device(**kwargs: object) -> Device:
 
 
 def _reading(now: datetime, **kwargs: object) -> Reading:
+    frame_kwargs = {
+        k: kwargs.pop(k)
+        for k in list(kwargs)
+        if k in {"state", "values", "latched", "signature", "batt_mv", "location", "seq"}
+    }
+    frame = TelemetryFrame(
+        version=1,
+        hw_id=DeviceId("44bd8d239c28"),
+        seq=frame_kwargs.pop("seq", 10),  # type: ignore[arg-type]
+        measured_at=now,
+        state=frame_kwargs.pop("state", AlertState.NORMAL),  # type: ignore[arg-type]
+        **frame_kwargs,  # type: ignore[arg-type]
+    )
     defaults: dict[str, object] = {
         "device_id": 1,
-        "seq": 10,
-        "measured_at": now,
+        "frame": frame,
         "received_at": now,
-        "frame_version": 1,
-        "state": AlertState.NORMAL,
     }
     defaults.update(kwargs)
     return Reading(**defaults)  # type: ignore[arg-type]
@@ -74,12 +86,13 @@ class TestReading:
 
     @pytest.mark.parametrize("humidity", [-1.0, 100.1])
     def test_humidity_out_of_range_is_rejected(self, now: datetime, humidity: float) -> None:
+        """범위 검증이 measurements 표 한 곳에서 나온다."""
         with pytest.raises(ValueError, match="humidity_pct"):
-            _reading(now, humidity_pct=humidity)
+            _reading(now, values={Measure.HUMIDITY_PCT: humidity})
 
     def test_positive_rssi_is_rejected(self, now: datetime) -> None:
         with pytest.raises(ValueError, match="rssi"):
-            _reading(now, rssi=3)
+            _reading(now, radio=RadioQuality(rssi=3))
 
     def test_clock_skew_is_exposed_not_corrected(self, now: datetime) -> None:
         reading = _reading(now, received_at=now + timedelta(seconds=42))
@@ -88,10 +101,12 @@ class TestReading:
         assert reading.measured_at == now  # 보정하지 않는다
 
     def test_channel_lookup(self, now: datetime) -> None:
-        voc = ChannelReading(channel=GasChannel.VOC, deviation=6.2, slope=7.1)
-        reading = _reading(now, channels=(voc,))
+        reading = _reading(now, values={Measure.VOC_DEV: 6.2, Measure.VOC_SLOPE: 7.1})
 
-        assert reading.channel(GasChannel.VOC) is voc
+        voc = reading.channel(GasChannel.VOC)
+        assert voc is not None
+        assert voc.deviation == pytest.approx(6.2)
+        # 값이 없는 채널은 올라오지 않는다 (미장착 센서와 구분)
         assert reading.channel(GasChannel.CO) is None
 
 

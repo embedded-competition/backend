@@ -9,21 +9,18 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from app.domain import measurements
 from app.domain.exceptions import FrameCrcError, FrameFieldError, FrameTooShort
+from app.domain.measurements import Measure
 from app.infrastructure.lora.crc import crc16_ccitt
 
 FRAME_VERSION = 1
 
 _HEADER = "<BB6sHIBH"  # version, flags, device_id, seq, measured_at, state, batt_mv
 _HEADER_SIZE = struct.calcsize(_HEADER)
-_SCALED = "<11h"
-_SCALED_SIZE = struct.calcsize(_SCALED)
 _HOLD_S = "<H"
 _GPS = "<2f"
 _CRC = "<H"
-
-BASE_SIZE = _HEADER_SIZE + _SCALED_SIZE + 2 + 2
-GPS_SIZE = BASE_SIZE + 8
 
 # int16 결측 센티널. 0으로 채우면 "정상 판독 0"과 구분되지 않는다.
 ABSENT = -32768
@@ -37,11 +34,14 @@ FLAG_SIG_NO_RECOVER = 1 << 4
 FLAG_WATER = 1 << 5
 FLAG_HAS_SIGNATURE = 1 << 6
 
-# 스케일 필드 순서 — 인덱스가 곧 오프셋이라 이름으로 접근하게 상수화한다.
-VOC_DEV, VOC_SLOPE = 0, 1
-H2_DEV, H2_SLOPE = 2, 3
-CO_DEV, CO_SLOPE = 4, 5
-TEMP_C, HUMIDITY, D_RH_DT, PRESSURE_DEV, PRESSURE_RATE = 6, 7, 8, 9, 10
+# 스케일 필드 순서는 domain.measurements.ORDER가 정한다 — 코덱이 따로 정의하면
+# 두 곳이 어긋난다. 새 항목은 반드시 ORDER 끝에 추가한다(중간 삽입은 오프셋을 민다).
+MEASURE_ORDER = measurements.ORDER
+_SCALED = f"<{len(MEASURE_ORDER)}h"
+_SCALED_SIZE = struct.calcsize(_SCALED)
+
+BASE_SIZE = _HEADER_SIZE + _SCALED_SIZE + 2 + 2
+GPS_SIZE = BASE_SIZE + 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +55,7 @@ class WireFrame:
     measured_epoch: int
     state_code: int
     batt_mv: int
-    scaled: tuple[float | None, ...]
+    values: dict[Measure, float]
     hold_s: int
     lat: float | None
     lon: float | None
@@ -95,7 +95,11 @@ def decode(payload: bytes) -> WireFrame:
         measured_epoch=epoch,
         state_code=state_code,
         batt_mv=batt_mv,
-        scaled=tuple(unscale(value) for value in scaled),
+        values={
+            measure: value
+            for measure, raw in zip(MEASURE_ORDER, scaled, strict=True)
+            if (value := unscale(raw)) is not None
+        },
         hold_s=hold_s,
         lat=lat,
         lon=lon,
@@ -114,7 +118,7 @@ def encode(frame: WireFrame) -> bytes:
         frame.state_code,
         frame.batt_mv,
     )
-    body += struct.pack(_SCALED, *(scale(value) for value in frame.scaled))
+    body += struct.pack(_SCALED, *(scale(frame.values.get(measure)) for measure in MEASURE_ORDER))
     body += struct.pack(_HOLD_S, frame.hold_s)
     if frame.has(FLAG_HAS_GPS):
         body += struct.pack(_GPS, frame.lat, frame.lon)

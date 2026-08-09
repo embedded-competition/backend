@@ -6,22 +6,29 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.core.descriptions import describe_release
 from app.domain.exceptions import ReleaseNotAllowed
 from app.domain.models import Alert, Device, Event
 from app.domain.ports import Clock
-from app.domain.repository import AlertRepository, EventRepository
 from app.domain.value_objects import AlertState, EventKind
+from app.infrastructure.db.repositories import (
+    SqlAlchemyAlertRepository,
+    SqlAlchemyEventRepository,
+)
 
 
+@dataclass(frozen=True, slots=True)
 class AlertService:
-    def __init__(self, *, alerts: AlertRepository, events: EventRepository, clock: Clock) -> None:
-        self._alerts = alerts
-        self._events = events
-        self._clock = clock
+    """생성자 보일러플레이트는 dataclass가 만든다 (Lombok @RequiredArgsConstructor 대응)."""
+
+    alerts: SqlAlchemyAlertRepository
+    events: SqlAlchemyEventRepository
+    clock: Clock
 
     def active_for(self, device: Device) -> list[Alert]:
-        return [a for a in self._alerts.list_active() if a.device_id == device.id]
+        return [a for a in self.alerts.list_active() if a.device_id == device.id]
 
     def request_release(self, device: Device, note: str | None = None) -> Alert:
         """해제 승인 규칙 (내부): 활성 ALARM 하나만 대상이다.
@@ -32,10 +39,10 @@ class AlertService:
         if target is None:
             raise ReleaseNotAllowed("해제할 활성 경보가 없다")
 
-        now = self._clock.now()
+        now = self.clock.now()
         target.acknowledge(at=now, note=note)
-        saved = self._alerts.save(target)
-        self._events.add(
+        saved = self.alerts.save(target)
+        self.events.add(
             Event(
                 device_id=device.id or 0,
                 alert_id=saved.id,

@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Request, status
 from sqlalchemy import text
 
-from app.api.deps import SessionDep, SettingsDep
 from app.api.schemas.health import ComponentHealth, ComponentStatus, HealthResponse
+from app.runtime.deps import SessionDep, SettingsDep
 
 router = APIRouter(tags=["health"])
 

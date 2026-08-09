@@ -13,15 +13,15 @@ from app.core import identity
 from app.core.descriptions import describe_transition
 from app.domain.exceptions import DeviceInactive, DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
-from app.domain.models import Alert, Device, Event, Reading
+from app.domain.models import Alert, Device, Event, RadioQuality, Reading
 from app.domain.ports import Clock, RawFrame
-from app.domain.repository import (
-    AlertRepository,
-    DeviceRepository,
-    EventRepository,
-    ReadingRepository,
-)
 from app.domain.value_objects import DeviceId, EventKind
+from app.infrastructure.db.repositories import (
+    SqlAlchemyAlertRepository,
+    SqlAlchemyDeviceRepository,
+    SqlAlchemyEventRepository,
+    SqlAlchemyReadingRepository,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,27 +39,21 @@ class IngestOutcome:
         return self.alert is not None and self.alert.to_state.needs_dispatch
 
 
+@dataclass(frozen=True, slots=True)
 class IngestService:
-    def __init__(
-        self,
-        *,
-        devices: DeviceRepository,
-        readings: ReadingRepository,
-        alerts: AlertRepository,
-        events: EventRepository,
-        clock: Clock,
-    ) -> None:
-        self._devices = devices
-        self._readings = readings
-        self._alerts = alerts
-        self._events = events
-        self._clock = clock
+    devices: SqlAlchemyDeviceRepository
+    readings: SqlAlchemyReadingRepository
+    alerts: SqlAlchemyAlertRepository
+    events: SqlAlchemyEventRepository
+    clock: Clock
 
     def ingest(self, frame: TelemetryFrame, raw: RawFrame) -> IngestOutcome:
+        if frame.hw_id is None:
+            raise DeviceNotRegistered("hw_id 없는 프레임은 소유 기기를 특정할 수 없다")
         device = self._resolve_device(frame.hw_id)
         reading = _to_reading(device, frame, raw)
 
-        stored = self._readings.add_if_absent(reading)
+        stored = self.readings.add_if_absent(reading)
         if not stored:
             # LoRa 재전송. 중복은 정상 동작이므로 예외로 다루지 않는다.
             return IngestOutcome(device=device, reading=reading, duplicate=True, missed_frames=0)
@@ -68,7 +62,7 @@ class IngestService:
         alert = self._record_transition(device, frame, reading)
         device.observe(seq=frame.seq, at=frame.measured_at, state=frame.state)
         device.frame_version = frame.version
-        self._devices.save(device)
+        self.devices.save(device)
 
         return IngestOutcome(
             device=device,
@@ -83,13 +77,13 @@ class IngestService:
 
         앱이 MAC으로 먼저 등록하므로, 첫 프레임에서 MAC↔hw_id를 연결해준다.
         """
-        device = self._devices.get_by_hw_id(hw_id)
+        device = self.devices.get_by_hw_id(hw_id)
         if device is None:
-            device = self._devices.get_by_mac(_mac_from_hw_id(str(hw_id)))
+            device = self.devices.get_by_mac(_mac_from_hw_id(str(hw_id)))
             if device is None:
                 raise DeviceNotRegistered(f"미등록 노드: {hw_id}")
             device.hw_id = hw_id
-            device = self._devices.save(device)
+            device = self.devices.save(device)
         if not device.is_active:
             raise DeviceInactive(f"비활성 기기: {device.public_id}")
         return device
@@ -102,17 +96,17 @@ class IngestService:
         if previous is None or previous is frame.state:
             return None
 
-        alert = self._alerts.add(
+        alert = self.alerts.add(
             Alert(
                 device_id=device.id or 0,
                 reading_id=reading.id,
                 from_state=previous,
                 to_state=frame.state,
                 occurred_at=frame.measured_at,
-                detected_at=self._clock.now(),
+                detected_at=self.clock.now(),
             )
         )
-        self._events.add(
+        self.events.add(
             Event(
                 device_id=device.id or 0,
                 alert_id=alert.id,
@@ -129,25 +123,10 @@ def _mac_from_hw_id(hw_id_hex: str) -> str:
 
 
 def _to_reading(device: Device, frame: TelemetryFrame, raw: RawFrame) -> Reading:
+    """센서 값은 frame이 통째로 갖고 있다 — 필드를 옮겨 담지 않는다."""
     return Reading(
         device_id=device.id or 0,
-        seq=frame.seq,
-        measured_at=frame.measured_at,
+        frame=frame,
         received_at=raw.received_at,
-        frame_version=frame.version,
-        state=frame.state,
-        latched=frame.latched,
-        channels=frame.channels,
-        signature=frame.signature,
-        temp_c=frame.temp_c,
-        humidity_pct=frame.humidity_pct,
-        d_rh_dt=frame.d_rh_dt,
-        pressure_dev=frame.pressure_dev,
-        pressure_rate=frame.pressure_rate,
-        water=frame.water,
-        batt_mv=frame.batt_mv,
-        lat=frame.lat,
-        lon=frame.lon,
-        rssi=raw.rssi,
-        snr=raw.snr,
+        radio=RadioQuality(rssi=raw.rssi, snr=raw.snr),
     )

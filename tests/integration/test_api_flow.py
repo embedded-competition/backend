@@ -11,14 +11,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.orm import Session
 
-from app.domain.models import Alert, Event, Reading
-from app.domain.value_objects import (
-    AlertState,
-    ChannelReading,
-    EventKind,
-    GasChannel,
-    SignatureFlags,
-)
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.measurements import Measure
+from app.domain.models import Alert, Event, RadioQuality, Reading
+from app.domain.value_objects import AlertState, DeviceId, EventKind, SignatureFlags
 from app.infrastructure.db.repositories import (
     SqlAlchemyAlertRepository,
     SqlAlchemyEventRepository,
@@ -157,20 +153,24 @@ class TestTelemetry:
         SqlAlchemyReadingRepository(session).add_if_absent(
             Reading(
                 device_id=device_id,
-                seq=7,
-                measured_at=now,
                 received_at=now,
-                frame_version=1,
-                state=AlertState.WATCH,
-                latched=False,
-                channels=(ChannelReading(channel=GasChannel.VOC, deviation=3.1, slope=2.4),),
-                signature=SignatureFlags(rise=True, hold=False, no_recover=True, hold_s=18),
-                temp_c=24.5,
-                humidity_pct=41.0,
-                batt_mv=3960,
-                lat=37.5573,
-                lon=127.0329,
-                rssi=-74,
+                radio=RadioQuality(rssi=-74),
+                frame=TelemetryFrame(
+                    version=1,
+                    hw_id=DeviceId("44bd8d239c28"),
+                    seq=7,
+                    measured_at=now,
+                    state=AlertState.WATCH,
+                    values={
+                        Measure.VOC_DEV: 3.1,
+                        Measure.VOC_SLOPE: 2.4,
+                        Measure.TEMP_C: 24.5,
+                        Measure.HUMIDITY_PCT: 41.0,
+                    },
+                    signature=SignatureFlags(rise=True, hold=False, no_recover=True, hold_s=18),
+                    batt_mv=3960,
+                    location=Coordinates(lat=37.5573, lon=127.0329),
+                ),
             )
         )
         session.commit()
@@ -196,16 +196,7 @@ class TestTelemetry:
         """raw는 서버가 채울 수 없다 (정합화 B2). 0으로 채워 내보내지 않는다."""
         body = await _register(client)
         device_id = _device_row_id(session, body["deviceId"])
-        SqlAlchemyReadingRepository(session).add_if_absent(
-            Reading(
-                device_id=device_id,
-                seq=1,
-                measured_at=now,
-                received_at=now,
-                frame_version=1,
-                state=AlertState.NORMAL,
-            )
-        )
+        SqlAlchemyReadingRepository(session).add_if_absent(_plain_reading(device_id, now, seq=1))
         session.commit()
 
         payload = (
@@ -225,16 +216,12 @@ class TestTelemetry:
         base = datetime(2026, 8, 8, 14, 0, tzinfo=UTC)
         for index, state in enumerate([AlertState.NORMAL, AlertState.WATCH]):
             readings.add_if_absent(
-                Reading(
-                    device_id=device_id,
+                _plain_reading(
+                    device_id,
+                    base + timedelta(minutes=5 * index),
                     seq=index,
-                    measured_at=base + timedelta(minutes=5 * index),
-                    received_at=base,
-                    frame_version=1,
                     state=state,
-                    channels=(
-                        ChannelReading(channel=GasChannel.VOC, deviation=float(index), slope=None),
-                    ),
+                    values={Measure.VOC_DEV: float(index)},
                 )
             )
         session.commit()
@@ -375,3 +362,25 @@ def _device_row_id(session: Session, public_id: str) -> int:
     device = SqlAlchemyDeviceRepository(session).get_by_public_id(public_id)
     assert device is not None
     return device.id or 0
+
+
+def _plain_reading(
+    device_id: int,
+    at: datetime,
+    *,
+    seq: int = 1,
+    state: AlertState = AlertState.NORMAL,
+    values: dict[Measure, float] | None = None,
+) -> Reading:
+    return Reading(
+        device_id=device_id,
+        received_at=at,
+        frame=TelemetryFrame(
+            version=1,
+            hw_id=DeviceId("44bd8d239c28"),
+            seq=seq,
+            measured_at=at,
+            state=state,
+            values=values or {},
+        ),
+    )

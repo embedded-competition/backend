@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from app.core.ingest_service import IngestService
 from app.domain.exceptions import DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
+from app.domain.measurements import Measure
 from app.domain.models import Device
 from app.domain.ports import RawFrame
-from app.domain.value_objects import AlertState, ChannelReading, DeviceId, GasChannel
+from app.domain.value_objects import AlertState, DeviceId
 from app.infrastructure.clock import SystemClock
 from app.infrastructure.db.repositories import (
     SqlAlchemyAlertRepository,
@@ -54,7 +55,7 @@ def _frame(seq: int, state: AlertState, at: datetime) -> TelemetryFrame:
         measured_at=at,
         state=state,
         latched=state is AlertState.ALARM,
-        channels=(ChannelReading(channel=GasChannel.VOC, deviation=3.1, slope=2.4),),
+        values={Measure.VOC_DEV: 3.1, Measure.VOC_SLOPE: 2.4},
         batt_mv=3960,
     )
 
@@ -169,8 +170,8 @@ class TestStoredFields:
         stored = SqlAlchemyReadingRepository(session).latest(registered.id or 0)
 
         assert stored is not None
-        assert stored.rssi == -74
-        assert stored.snr == pytest.approx(7.5)
+        assert stored.radio.rssi == -74
+        assert stored.radio.snr == pytest.approx(7.5)
 
     def test_node_and_server_times_are_both_kept(
         self, ingest: IngestService, session: Session, registered: Device, now: datetime

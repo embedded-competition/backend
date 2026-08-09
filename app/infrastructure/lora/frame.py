@@ -1,6 +1,7 @@
 """원시 필드 ↔ domain 변환.
 
 와이어 포맷(오프셋·스케일·CRC)은 codec.py가, 이 모듈은 의미 해석만 담당한다.
+센서 값은 measurements dict로 통째 넘어가므로 항목별 대입이 없다.
 파서는 순수 함수다 — DB·로그·네트워크 접근 없음.
 """
 
@@ -9,14 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.domain.exceptions import FrameFieldError, UnsupportedFrameVersion
-from app.domain.frames import TelemetryFrame
-from app.domain.value_objects import (
-    AlertState,
-    ChannelReading,
-    DeviceId,
-    GasChannel,
-    SignatureFlags,
-)
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.value_objects import AlertState, DeviceId, SignatureFlags
 from app.infrastructure.lora import codec
 from app.infrastructure.lora.codec import FRAME_VERSION, WireFrame
 
@@ -28,12 +23,6 @@ _STATE_BY_CODE = {
     4: AlertState.FAULT,
 }
 _CODE_BY_STATE = {state: code for code, state in _STATE_BY_CODE.items()}
-
-_CHANNEL_SLOTS = (
-    (GasChannel.VOC, codec.VOC_DEV, codec.VOC_SLOPE),
-    (GasChannel.H2, codec.H2_DEV, codec.H2_SLOPE),
-    (GasChannel.CO, codec.CO_DEV, codec.CO_SLOPE),
-)
 
 
 def parse_frame(payload: bytes) -> TelemetryFrame:
@@ -52,44 +41,26 @@ def to_domain(wire: WireFrame) -> TelemetryFrame:
     if state is None:
         raise FrameFieldError(f"알 수 없는 state 코드: {wire.state_code}")
 
-    if wire.lat is not None and wire.lon is not None:  # noqa: SIM102 - 조건 의미가 다름
-        if not -90.0 <= wire.lat <= 90.0 or not -180.0 <= wire.lon <= 180.0:
-            raise FrameFieldError(f"좌표 범위 이탈: lat={wire.lat}, lon={wire.lon}")
-
-    return TelemetryFrame(
-        version=wire.version,
-        hw_id=DeviceId(wire.hw_id_hex),
-        seq=wire.seq,
-        measured_at=datetime.fromtimestamp(wire.measured_epoch, tz=UTC),
-        state=state,
-        latched=wire.has(codec.FLAG_LATCHED),
-        batt_mv=wire.batt_mv or None,
-        channels=_channels_of(wire),
-        signature=_signature_of(wire),
-        temp_c=wire.scaled[codec.TEMP_C],
-        humidity_pct=wire.scaled[codec.HUMIDITY],
-        d_rh_dt=wire.scaled[codec.D_RH_DT],
-        pressure_dev=wire.scaled[codec.PRESSURE_DEV],
-        pressure_rate=wire.scaled[codec.PRESSURE_RATE],
-        water=wire.has(codec.FLAG_WATER),
-        lat=wire.lat,
-        lon=wire.lon,
-    )
+    try:
+        return TelemetryFrame(
+            version=wire.version,
+            hw_id=DeviceId(wire.hw_id_hex),
+            seq=wire.seq,
+            measured_at=datetime.fromtimestamp(wire.measured_epoch, tz=UTC),
+            state=state,
+            latched=wire.has(codec.FLAG_LATCHED),
+            values=wire.values,
+            signature=_signature_of(wire),
+            batt_mv=wire.batt_mv or None,
+            water=wire.has(codec.FLAG_WATER),
+            location=_location_of(wire),
+        )
+    except ValueError as exc:
+        # 도메인 범위 검증 실패를 프레임 오류로 승격 — 수신 루프가 구분해 센다.
+        raise FrameFieldError(str(exc)) from exc
 
 
 def to_wire(frame: TelemetryFrame) -> WireFrame:
-    by_channel = {c.channel: c for c in frame.channels}
-    scaled: list[float | None] = [None] * 11
-    for channel, dev_slot, slope_slot in _CHANNEL_SLOTS:
-        measurement = by_channel.get(channel)
-        scaled[dev_slot] = measurement.deviation if measurement else None
-        scaled[slope_slot] = measurement.slope if measurement else None
-    scaled[codec.TEMP_C] = frame.temp_c
-    scaled[codec.HUMIDITY] = frame.humidity_pct
-    scaled[codec.D_RH_DT] = frame.d_rh_dt
-    scaled[codec.PRESSURE_DEV] = frame.pressure_dev
-    scaled[codec.PRESSURE_RATE] = frame.pressure_rate
-
     return WireFrame(
         version=frame.version,
         flags=_flags_of(frame),
@@ -98,24 +69,17 @@ def to_wire(frame: TelemetryFrame) -> WireFrame:
         measured_epoch=int(frame.measured_at.timestamp()),
         state_code=_CODE_BY_STATE[frame.state],
         batt_mv=frame.batt_mv or 0,
-        scaled=tuple(scaled),
+        values=frame.values,
         hold_s=frame.signature.hold_s if frame.signature else 0,
-        lat=frame.lat,
-        lon=frame.lon,
+        lat=frame.location.lat if frame.location else None,
+        lon=frame.location.lon if frame.location else None,
     )
 
 
-def _channels_of(wire: WireFrame) -> tuple[ChannelReading, ...]:
-    return tuple(
-        ChannelReading(
-            channel=channel,
-            deviation=wire.scaled[dev_slot],
-            slope=wire.scaled[slope_slot],
-        )
-        for channel, dev_slot, slope_slot in _CHANNEL_SLOTS
-        # 채널 전체가 결측이면 도메인에 올리지 않는다 (미장착 센서와 구분)
-        if wire.scaled[dev_slot] is not None or wire.scaled[slope_slot] is not None
-    )
+def _location_of(wire: WireFrame) -> Coordinates | None:
+    if wire.lat is None or wire.lon is None:
+        return None
+    return Coordinates(lat=wire.lat, lon=wire.lon)
 
 
 def _signature_of(wire: WireFrame) -> SignatureFlags | None:
@@ -132,7 +96,7 @@ def _signature_of(wire: WireFrame) -> SignatureFlags | None:
 
 def _flags_of(frame: TelemetryFrame) -> int:
     flags = 0
-    if frame.lat is not None and frame.lon is not None:
+    if frame.location is not None:
         flags |= codec.FLAG_HAS_GPS
     if frame.latched:
         flags |= codec.FLAG_LATCHED

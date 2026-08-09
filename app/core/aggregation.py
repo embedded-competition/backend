@@ -1,13 +1,18 @@
-"""시간당 집계. 저장소·서비스를 모르는 순수 계산."""
+"""시간당 집계. 저장소·서비스를 모르는 순수 계산.
+
+항목별 평균을 따로 적지 않는다 — Measure를 순회하므로 센서가 늘어도 이 파일은
+바뀌지 않는다.
+"""
 
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.severity import severity_of
+from app.domain.measurements import Measure
 from app.domain.models import Reading
-from app.domain.value_objects import AlertState, GasChannel
+from app.domain.value_objects import AlertState
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,10 +21,10 @@ class HourlySample:
 
     hour: str
     state: AlertState
-    channels: dict[GasChannel, float | None]
-    temp_c: float | None
-    humidity_pct: float | None
-    pressure_dev: float | None
+    values: dict[Measure, float] = field(default_factory=dict)
+
+    def value(self, measure: Measure) -> float | None:
+        return self.values.get(measure)
 
 
 def aggregate_hourly(rows: list[Reading]) -> list[HourlySample]:
@@ -32,22 +37,15 @@ def aggregate_hourly(rows: list[Reading]) -> list[HourlySample]:
         HourlySample(
             hour=f"{hour:02d}:00",
             state=max(bucket, key=lambda r: severity_of(r.state)).state,
-            channels={channel: _mean(_deviations(bucket, channel)) for channel in GasChannel},
-            temp_c=_mean([r.temp_c for r in bucket]),
-            humidity_pct=_mean([r.humidity_pct for r in bucket]),
-            pressure_dev=_mean([r.pressure_dev for r in bucket]),
+            values=_mean_values(bucket),
         )
         for hour, bucket in sorted(buckets.items())
     ]
 
 
-def _deviations(bucket: list[Reading], channel: GasChannel) -> list[float | None]:
-    measurements = [reading.channel(channel) for reading in bucket]
-    return [m.deviation for m in measurements if m is not None]
-
-
-def _mean(values: list[float | None]) -> float | None:
-    present = [v for v in values if v is not None]
-    if not present:
-        return None
-    return round(sum(present) / len(present), 3)
+def _mean_values(bucket: list[Reading]) -> dict[Measure, float]:
+    totals: dict[Measure, list[float]] = defaultdict(list)
+    for reading in bucket:
+        for measure, value in reading.frame.values.items():
+            totals[measure].append(value)
+    return {measure: round(sum(values) / len(values), 3) for measure, values in totals.items()}

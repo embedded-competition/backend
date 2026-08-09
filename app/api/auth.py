@@ -7,9 +7,9 @@ from typing import Annotated
 from fastapi import Depends, Path
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.api.providers import DeviceServiceDep
 from app.domain.exceptions import DeviceNotFound, Unauthorized
 from app.domain.models import Device
+from app.runtime.providers import DeviceServiceDep
 
 # auto_error=False — 헤더 없음도 우리 에러 형식(401 unauthorized)으로 응답한다.
 _bearer = HTTPBearer(auto_error=False)

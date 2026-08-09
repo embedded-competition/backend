@@ -8,10 +8,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
+from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.measurements import Measure
 from app.domain.models import Alert, Device, Reading
 from app.domain.value_objects import (
     AlertState,
-    ChannelReading,
     DeviceId,
     GasChannel,
     SignatureFlags,
@@ -52,13 +53,20 @@ def saved_device(devices: SqlAlchemyDeviceRepository, now: datetime) -> Iterator
 
 
 def _reading(device_id: int, now: datetime, **kwargs: object) -> Reading:
+    frame_keys = {"seq", "state", "values", "latched", "signature", "batt_mv", "location"}
+    frame_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in frame_keys}
+    frame = TelemetryFrame(
+        version=1,
+        hw_id=DeviceId("44bd8d239c28"),
+        seq=frame_kwargs.pop("seq", 1),  # type: ignore[arg-type]
+        measured_at=now,
+        state=frame_kwargs.pop("state", AlertState.NORMAL),  # type: ignore[arg-type]
+        **frame_kwargs,  # type: ignore[arg-type]
+    )
     defaults: dict[str, object] = {
         "device_id": device_id,
-        "seq": 1,
-        "measured_at": now,
+        "frame": frame,
         "received_at": now,
-        "frame_version": 1,
-        "state": AlertState.NORMAL,
     }
     defaults.update(kwargs)
     return Reading(**defaults)  # type: ignore[arg-type]
@@ -113,10 +121,11 @@ class TestReadingRepository:
             _reading(
                 saved_device.id or 0,
                 now,
-                channels=(
-                    ChannelReading(channel=GasChannel.VOC, deviation=6.2, slope=7.1),
-                    ChannelReading(channel=GasChannel.H2, deviation=1.0, slope=None),
-                ),
+                values={
+                    Measure.VOC_DEV: 6.2,
+                    Measure.VOC_SLOPE: 7.1,
+                    Measure.H2_DEV: 1.0,
+                },
             )
         )
 
@@ -241,10 +250,10 @@ class TestAppContractFields:
         stored = readings.latest(saved_device.id or 0)
 
         assert stored is not None
-        assert stored.signature is not None
-        assert stored.signature.hold_s == 18
+        assert stored.frame.signature is not None
+        assert stored.frame.signature.hold_s == 18
         # 3요소 중 hold가 빠지면 시그니처 미성립 (알고리즘 P5)
-        assert stored.signature.is_complete is False
+        assert stored.frame.signature.is_complete is False
 
     def test_signature_absent_stays_none(
         self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
@@ -255,20 +264,26 @@ class TestAppContractFields:
         stored = readings.latest(saved_device.id or 0)
 
         assert stored is not None
-        assert stored.signature is None
+        assert stored.frame.signature is None
 
     def test_gps_and_batt_roundtrip(
         self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
     ) -> None:
         readings.add_if_absent(
-            _reading(saved_device.id or 0, now, lat=37.5573, lon=127.0329, batt_mv=3960)
+            _reading(
+                saved_device.id or 0,
+                now,
+                location=Coordinates(lat=37.5573, lon=127.0329),
+                batt_mv=3960,
+            )
         )
 
         stored = readings.latest(saved_device.id or 0)
 
         assert stored is not None
-        assert stored.lat == pytest.approx(37.5573)
-        assert stored.batt_mv == 3960
+        assert stored.frame.location is not None
+        assert stored.frame.location.lat == pytest.approx(37.5573)
+        assert stored.frame.batt_mv == 3960
 
     def test_gps_missing_is_null_not_zero(
         self, readings: SqlAlchemyReadingRepository, saved_device: Device, now: datetime
@@ -279,9 +294,8 @@ class TestAppContractFields:
         stored = readings.latest(saved_device.id or 0)
 
         assert stored is not None
-        assert stored.lat is None
-        assert stored.lon is None
+        assert stored.frame.location is None
 
     def test_out_of_range_coordinates_rejected(self, saved_device: Device, now: datetime) -> None:
         with pytest.raises(ValueError, match="lat 범위"):
-            _reading(saved_device.id or 0, now, lat=91.0)
+            Coordinates(lat=91.0, lon=0.0)
