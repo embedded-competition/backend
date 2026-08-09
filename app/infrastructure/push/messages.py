@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.domain.models import Alert, Device
+from app.domain.alerting import Alert
+from app.domain.device import Device
 from app.domain.value_objects import AlertState
 
 

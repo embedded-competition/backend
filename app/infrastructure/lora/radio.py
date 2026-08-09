@@ -11,7 +11,7 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from app.domain.ports import RawFrame
+from app.domain.ports.frame_source import RawFrame
 from app.infrastructure.lora import registers as reg
 from app.infrastructure.lora.registers import RadioConfig
 from app.infrastructure.lora.spi import RegisterBus, SpiRegisterBus

@@ -11,17 +11,18 @@ from dataclasses import dataclass
 
 from app.core import identity
 from app.core.descriptions import describe_transition
+from app.domain.alerting import Alert, Event
+from app.domain.device import Device
 from app.domain.exceptions import DeviceInactive, DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
-from app.domain.models import Alert, Device, Event, RadioQuality, Reading
-from app.domain.ports import Clock, RawFrame
+from app.domain.ports.clock import Clock
+from app.domain.ports.frame_source import RawFrame
+from app.domain.readings import RadioQuality, Reading
 from app.domain.value_objects import DeviceId, EventKind
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAlertRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyEventRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 
 
 @dataclass(frozen=True, slots=True)

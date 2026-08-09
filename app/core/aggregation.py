@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from app.core.severity import severity_of
 from app.domain.measurements import Measure
-from app.domain.models import Reading
+from app.domain.readings import Reading
 from app.domain.value_objects import AlertState
 
 

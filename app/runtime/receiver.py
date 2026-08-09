@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.ingest_service import IngestOutcome, IngestService
 from app.core.notification_service import NotificationService
 from app.domain.exceptions import DeviceInactive, DeviceNotRegistered, FrameError
-from app.domain.ports import FrameSource, RawFrame
+from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.lora.frame import parse_frame
 from app.infrastructure.lora.stats import ReceiveStats
 

@@ -4,7 +4,7 @@ description: FCM/APNs 푸시 어댑터·기기 토큰 관리·재시도·알림 
 ---
 ## Rule (어댑터 경계)
 - 푸시 SDK는 `app/infrastructure/push/`에만. `firebase_admin` import가 이 폴더 밖에 나가지 않는다.
-- 서비스는 `app/domain/ports.py`의 `PushSender` Protocol만 안다. 구현 교체(FCM→APNs 직접)가 서비스 수정 없이 되어야 한다.
+- 서비스는 `app/domain/ports/push_sender.py`의 `PushSender` Protocol만 안다. 구현 교체(FCM→APNs 직접)가 서비스 수정 없이 되어야 한다.
 - 개발·테스트용 `LoggingPushSender`(로그만 남김) 구현을 둔다. 실기기 없이 알람 흐름을 검증할 수 있어야 한다.
 
 ## Rule (전송 시점)

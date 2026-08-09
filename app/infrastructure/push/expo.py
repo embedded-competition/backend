@@ -7,8 +7,9 @@ from typing import Any
 
 import httpx
 
-from app.domain.models import Alert, Device
-from app.domain.ports import PushResult
+from app.domain.alerting import Alert
+from app.domain.device import Device
+from app.domain.ports.push_sender import PushResult
 from app.infrastructure.push import messages
 
 logger = logging.getLogger(__name__)

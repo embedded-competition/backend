@@ -8,12 +8,12 @@ from datetime import UTC, date, datetime, time, timedelta
 from app.core import fleet
 from app.core.aggregation import HourlySample, aggregate_hourly
 from app.core.fleet import FleetComparison
-from app.domain.models import Device, Event, Reading
-from app.infrastructure.db.repositories import (
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyEventRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.domain.alerting import Event
+from app.domain.device import Device
+from app.domain.readings import Reading
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 
 # 하루치 원본 상한. 5분 주기면 288행이므로 여유를 두되 무제한은 두지 않는다.
 _DAY_SCAN_LIMIT = 2_000

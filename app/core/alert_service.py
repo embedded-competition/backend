@@ -9,14 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.core.descriptions import describe_release
+from app.domain.alerting import Alert, Event
+from app.domain.device import Device
 from app.domain.exceptions import ReleaseNotAllowed
-from app.domain.models import Alert, Device, Event
-from app.domain.ports import Clock
+from app.domain.ports.clock import Clock
 from app.domain.value_objects import AlertState, EventKind
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAlertRepository,
-    SqlAlchemyEventRepository,
-)
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,16 +10,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import Settings
 from app.core.ingest_service import IngestService
 from app.core.notification_service import NotificationService
-from app.domain.ports import PushSender
+from app.domain.ports.push_sender import PushSender
 from app.infrastructure.clock import SystemClock
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAlertRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyEventRepository,
-    SqlAlchemyPushDeliveryRepository,
-    SqlAlchemyPushTokenRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
+from app.infrastructure.db.repositories.push_deliveries import SqlAlchemyPushDeliveryRepository
+from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.infrastructure.push.expo import ExpoPushSender, LoggingPushSender
 
 

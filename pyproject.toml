@@ -116,6 +116,42 @@ source_modules = ["app.infrastructure"]
 forbidden_modules = ["app.api", "app.core", "app.runtime"]
 
 [[tool.importlinter.contracts]]
+# 파일만 나누고 서로 참조하면 쪼갠 게 아니다. 여기가 깨지면 하위도메인 경계를
+# 잘못 그은 것이므로 파일을 합치든 경계를 다시 긋든 결정해야 한다.
+name = "도메인 하위도메인은 서로 독립"
+type = "independence"
+modules = [
+    "app.domain.device",
+    "app.domain.readings",
+    "app.domain.alerting",
+    "app.domain.access",
+    "app.domain.push",
+]
+
+[[tool.importlinter.contracts]]
+name = "port끼리 서로 모른다"
+type = "independence"
+modules = [
+    "app.domain.ports.clock",
+    "app.domain.ports.frame_source",
+    "app.domain.ports.push_sender",
+]
+
+[[tool.importlinter.contracts]]
+# 저장소 간 호출은 트랜잭션 경계를 흐린다 — 조합은 서비스에서만.
+name = "저장소끼리 서로 모른다"
+type = "independence"
+modules = [
+    "app.infrastructure.db.repositories.devices",
+    "app.infrastructure.db.repositories.readings",
+    "app.infrastructure.db.repositories.alerts",
+    "app.infrastructure.db.repositories.events",
+    "app.infrastructure.db.repositories.access_tokens",
+    "app.infrastructure.db.repositories.push_tokens",
+    "app.infrastructure.db.repositories.push_deliveries",
+]
+
+[[tool.importlinter.contracts]]
 name = "하드웨어·외부 SDK는 전용 어댑터에만"
 type = "forbidden"
 # 조립부(runtime)는 어댑터를 import하므로 전이적으로 걸린다 — 제외한다.

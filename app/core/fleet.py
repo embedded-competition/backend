@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.core.severity import severity_of, state_for
-from app.domain.models import Device
+from app.domain.device import Device
 from app.domain.value_objects import AlertState
 
 

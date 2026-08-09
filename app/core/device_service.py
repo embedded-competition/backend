@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.core import identity
+from app.domain.access import AccessToken
+from app.domain.device import Device
 from app.domain.exceptions import DeviceAlreadyPaired, DeviceNotFound, Unauthorized
-from app.domain.models import AccessToken, Device, PushToken
-from app.domain.ports import Clock
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAccessTokenRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyPushTokenRepository,
-)
+from app.domain.ports.clock import Clock
+from app.domain.push import PushToken
+from app.infrastructure.db.repositories.access_tokens import SqlAlchemyAccessTokenRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
 
 
 @dataclass(frozen=True, slots=True)

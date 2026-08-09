@@ -8,17 +8,17 @@ import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.notification_service import NotificationService
-from app.domain.models import Device, PushToken
-from app.domain.ports import PushResult, RawFrame
+from app.domain.device import Device
+from app.domain.ports.frame_source import RawFrame
+from app.domain.ports.push_sender import PushResult
+from app.domain.push import PushToken
 from app.domain.value_objects import AlertState
 from app.infrastructure.clock import SystemClock
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAlertRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyPushDeliveryRepository,
-    SqlAlchemyPushTokenRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.push_deliveries import SqlAlchemyPushDeliveryRepository
+from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.infrastructure.lora.frame import build_frame
 from app.infrastructure.lora.scenario import DEFAULT_SCENARIO, ScenarioFrameFactory
 from app.infrastructure.lora.sources import ReplayFrameSource

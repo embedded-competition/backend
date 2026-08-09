@@ -9,19 +9,17 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.ingest_service import IngestService
+from app.domain.device import Device
 from app.domain.exceptions import DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
-from app.domain.models import Device
-from app.domain.ports import RawFrame
+from app.domain.ports.frame_source import RawFrame
 from app.domain.value_objects import AlertState, DeviceId
 from app.infrastructure.clock import SystemClock
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAlertRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyEventRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.infrastructure.lora.codec import FRAME_VERSION
 
 HW_ID = "aabbccddeeff"

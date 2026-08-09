@@ -10,14 +10,12 @@ from app.core.alert_service import AlertService
 from app.core.device_service import DeviceService
 from app.core.telemetry_service import TelemetryService
 from app.infrastructure.clock import SystemClock
-from app.infrastructure.db.repositories import (
-    SqlAlchemyAccessTokenRepository,
-    SqlAlchemyAlertRepository,
-    SqlAlchemyDeviceRepository,
-    SqlAlchemyEventRepository,
-    SqlAlchemyPushTokenRepository,
-    SqlAlchemyReadingRepository,
-)
+from app.infrastructure.db.repositories.access_tokens import SqlAlchemyAccessTokenRepository
+from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
+from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
+from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.runtime.deps import SessionDep, SettingsDep
 
 

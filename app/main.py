@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routes import alerts, devices, health, telemetry
 from app.core.config import Settings, get_settings
-from app.domain.ports import RawFrame
+from app.domain.ports.frame_source import RawFrame
 from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.runtime import wiring
 from app.runtime.lora import create_frame_source

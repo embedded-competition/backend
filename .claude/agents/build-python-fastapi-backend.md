@@ -299,17 +299,28 @@ app/:
     ingest_service.py: LoRa 프레임 수신 → 저장 → 알람 판단
     alert_service.py: 알람 승격·해제·이력·푸시 디스패치
   domain/:
-    _: pure Python. 외부 import 0
-    models.py: dataclass Device/Reading/Alert. invariant는 메서드 안
+    _: pure Python. 외부 import 0. 하위도메인 단위로 분할하고 서로 import 금지
+    device.py: Device 애그리게이트
+    readings.py: Reading·RadioQuality
+    alerting.py: Alert·Event
     value_objects.py: frozen dataclass (DeviceId, GasChannel, AlertState)
-    repository.py: Protocol (port) 선언
-    ports.py: 외부 시스템 Protocol (PushSender, Clock)
+    exceptions.py: 도메인 예외 카탈로그. code가 앱 계약이라 한 파일
+    ports/:
+      _: port 1개 = 파일 1개. re-export 금지. 구현 2개 이상일 때만 만든다
+      clock.py: Clock
+      frame_source.py: FrameSource·RawFrame
+      push_sender.py: PushSender·PushResult
+  runtime/:
+    _: 조립(composition root) + 비-HTTP 구동 어댑터. core 위, api 아래
+    wiring.py: 구현체를 port에 꽂는 지점
+    receiver.py: LoRa 수신 루프 (라우터와 같은 구동 어댑터)
   infrastructure/:
-    _: 외부 의존 격리. domain Protocol 구현체
+    _: 외부 의존 격리. 상위 계층 import 금지
     db/:
-      orm.py: SQLAlchemy mapped class. domain dataclass와 별개
+      orm.py: SQLAlchemy mapped class. 쪼개지 않는다 (autogenerate DROP TABLE 위험)
       session.py: engine·sessionmaker·SQLite PRAGMA
-      repositories.py: domain Repository Protocol 구현
+      repositories/:
+        _: 저장소 1개 = 파일 1개. ORM↔domain 변환도 같은 파일에 비공개로
     lora/:
       _: SX1276 SPI 수신 어댑터
       radio.py: spidev + DIO0 인터럽트. 칩 제어만
@@ -330,12 +341,12 @@ tests/:
 | `app/api/deps.py` | `Depends` provider 한 곳. 테스트는 `app.dependency_overrides` | 라우터마다 세션 생성, 전역 세션 |
 | `app/core/*_service.py` | 유스케이스. domain 호출 + Protocol 호출. async | `Depends(...)`가 시그니처 침범, `from fastapi`/`from sqlalchemy` import. `rg "^(from\|import) (fastapi\|sqlalchemy)" app/core/` 매치 |
 | `app/core/config.py` | `pydantic_settings.BaseSettings` typed config. env var SSOT | `os.getenv` 산재, default 누락 |
-| `app/domain/models.py` | `dataclass`. invariant는 메서드 안 | `rg "^(from\|import) (fastapi\|sqlalchemy\|pydantic)" app/domain/` 매치 |
+| `app/domain/<하위도메인>.py` | `dataclass`. invariant는 메서드 안. 하위도메인끼리 import 0 | `uv run lint-imports` broken, "엔티티 모음" `models.py` 부활 |
 | `app/domain/value_objects.py` | `@dataclass(frozen=True)` 불변 값 | mutable VO, `__eq__` 없음 |
-| `app/domain/repository.py` | `Protocol` port. domain 타입만 노출 | 시그니처에 `Session`·ORM 타입 노출 |
-| `app/domain/ports.py` | 외부 시스템 `Protocol` (Push·Clock) | `httpx.Client` 타입 노출, 구현 포함 |
-| `app/infrastructure/db/orm.py` | SQLAlchemy mapped class | ORM 클래스에 도메인 메서드 (그건 domain) |
-| `app/infrastructure/db/repositories.py` | Protocol 구현. session 주입 받음 | session을 core에 노출, raw `engine.execute()` |
+| `app/domain/ports/<port>.py` | 외부 시스템 `Protocol` 1개 (Push·Clock·FrameSource) | `httpx.Client` 타입 노출, 구현 포함, `__init__` re-export |
+| `app/runtime/wiring.py` | 구현체를 port에 꽂는 유일한 지점 | 어댑터가 서비스를 직접 조립 |
+| `app/infrastructure/db/orm.py` | SQLAlchemy mapped class. 단일 파일 유지 | ORM 클래스에 도메인 메서드 (그건 domain) |
+| `app/infrastructure/db/repositories/<집합체>.py` | 저장소 1개 + 그 변환 함수. session은 dataclass 필드 | 저장소끼리 상호 호출, 별도 `mappers.py`, `__init__` 수기 작성 |
 | `app/infrastructure/lora/radio.py` | SPI·GPIO 칩 제어만 | 여기서 DB 저장·알람 판단 |
 | `app/infrastructure/lora/frame.py` | 바이트 → domain 객체 파싱. 파싱 실패는 예외 | 파싱 함수가 DB 접근 |
 | `app/infrastructure/push/` | FCM 어댑터 + 타임아웃 + 재시도 | core가 firebase SDK 직접 import |

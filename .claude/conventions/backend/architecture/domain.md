@@ -14,9 +14,16 @@ description: app/domain/ 아래 dataclass 도메인 모델·값객체·Protocol 
 - 도메인 예외는 HTTP 상태 코드를 모른다. 매핑은 `api/`의 예외 핸들러에서 한다.
 - 외부 라이브러리 예외(`sqlalchemy.exc.*`, `httpx.*`)를 domain까지 올리지 않는다. `infrastructure/`에서 도메인 예외로 변환한다.
 
+## Rule (파일 배치)
+- 하위도메인 단위로 파일을 나눈다 — `device.py`, `readings.py`, `alerting.py`, `access.py`, `push.py`. "엔티티 모음" 파일(`models.py`)을 만들지 않는다.
+- 나눈 하위도메인끼리는 서로 import하지 않는다. 필요해지면 경계를 잘못 그은 것이므로 합치든 다시 긋든 결정한다 (import-linter `independence` 계약으로 강제).
+- 값 객체와 그것만을 위한 보조 타입은 한 파일에 둔다 (`TelemetryFrame` + `Coordinates`).
+- 예외는 `exceptions.py` 한 파일에 모은다 — `code`가 앱과의 계약이라 중복·누락이 한눈에 보여야 한다.
+
 ## Rule (Protocol port)
-- `app/domain/repository.py` — 저장소 Protocol. 메서드 시그니처에 domain 타입만 등장.
-- `app/domain/ports.py` — 외부 시스템 Protocol (`PushSender`, `Clock`).
+- `app/domain/ports/<port명>.py` — port 1개 = 파일 1개. 어댑터가 자기가 구현할 port만 import하게 한다.
+- port는 구현이 2개 이상일 때만 만든다 (`FrameSource` fake/sx1276, `PushSender` logging/expo, `Clock` system/fixed). 저장소처럼 구현이 하나면 만들지 않는다.
+- `ports/__init__.py`에서 re-export하지 않는다.
 - `typing.Protocol` 사용. `ABC` 상속 강제 X (구현체가 domain을 import하지 않아도 되게).
 - 시간은 `Clock` port로 주입한다. 도메인·서비스에서 `datetime.now()` 직접 호출 금지 (테스트 불가).
 

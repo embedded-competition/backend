@@ -19,9 +19,10 @@ from app.api.schemas.channels import (
     PressureResponse,
     SignatureResponse,
 )
+from app.domain.device import Device
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
-from app.domain.models import Device, Reading
+from app.domain.readings import Reading
 from app.domain.value_objects import AlertState, GasChannel
 
 

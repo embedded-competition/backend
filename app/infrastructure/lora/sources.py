@@ -10,7 +10,7 @@ import math
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from app.domain.ports import RawFrame
+from app.domain.ports.frame_source import RawFrame
 from app.infrastructure.lora.frame import build_frame
 from app.infrastructure.lora.scenario import ScenarioFrameFactory
 

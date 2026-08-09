@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -14,31 +15,21 @@ from app.domain.exceptions import (
 )
 from app.domain.frames import Coordinates, TelemetryFrame
 from app.domain.measurements import Measure
-from app.domain.value_objects import (
-    AlertState,
-    DeviceId,
-    GasChannel,
-    SignatureFlags,
-)
+from app.domain.value_objects import AlertState, GasChannel, SignatureFlags
 from app.infrastructure.lora import codec
 from app.infrastructure.lora.codec import BASE_SIZE, GPS_SIZE
 from app.infrastructure.lora.crc import crc16_ccitt
 from app.infrastructure.lora.frame import build_frame, parse_frame
+from tests.builders import HW_ID, a_frame
 
 NOW = datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC)
 
 
-def _frame(**kwargs: object) -> TelemetryFrame:
-    defaults: dict[str, object] = {
-        "version": codec.FRAME_VERSION,
-        "hw_id": DeviceId("aabbccddeeff"),
-        "seq": 42,
-        "measured_at": NOW,
-        "state": AlertState.WATCH,
-        "latched": False,
-    }
-    defaults.update(kwargs)
-    return TelemetryFrame(**defaults)  # type: ignore[arg-type]
+def _frame(**kwargs: Any) -> TelemetryFrame:
+    """와이어 version은 코덱 계약이라 명시적으로 고정한다."""
+    kwargs.setdefault("seq", 42)
+    kwargs.setdefault("state", AlertState.WATCH)
+    return a_frame(NOW, version=codec.FRAME_VERSION, **kwargs)
 
 
 class TestCrc:
@@ -56,7 +47,7 @@ class TestRoundTrip:
 
         restored = parse_frame(build_frame(original))
 
-        assert restored.hw_id == original.hw_id
+        assert restored.hw_id == HW_ID
         assert restored.seq == 42
         assert restored.state is AlertState.WATCH
         assert restored.measured_at == NOW

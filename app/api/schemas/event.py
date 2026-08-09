@@ -8,7 +8,7 @@ from typing import Annotated
 from pydantic import Field
 
 from app.api.schemas.base import ApiModel
-from app.domain.models import Event
+from app.domain.alerting import Event
 
 
 class EventResponse(ApiModel):

@@ -10,12 +10,13 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from app.domain.models import Alert, Device, PushDelivery
-from app.domain.ports import Clock, PushSender
-from app.infrastructure.db.repositories import (
-    SqlAlchemyPushDeliveryRepository,
-    SqlAlchemyPushTokenRepository,
-)
+from app.domain.alerting import Alert
+from app.domain.device import Device
+from app.domain.ports.clock import Clock
+from app.domain.ports.push_sender import PushSender
+from app.domain.push import PushDelivery
+from app.infrastructure.db.repositories.push_deliveries import SqlAlchemyPushDeliveryRepository
+from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
 
 logger = logging.getLogger(__name__)
 

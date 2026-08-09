@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from app.core.config import Settings
-from app.domain.ports import FrameSource
+from app.domain.ports.frame_source import FrameSource
 from app.infrastructure.lora.radio import Sx1276FrameSource
 from app.infrastructure.lora.registers import RadioConfig
 from app.infrastructure.lora.scenario import ScenarioFrameFactory
