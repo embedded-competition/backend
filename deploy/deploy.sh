@@ -11,9 +11,20 @@ set -euo pipefail
 PATH="$HOME/.local/bin:$PATH"
 export PATH
 
+REPO_DIR="${DEPLOY_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+# 아래 2단계의 checkout이 이 파일 자체를 갈아치운다. bash는 스크립트를 필요할 때마다
+# 이어 읽으므로, 그대로 두면 옛 버전과 새 버전이 한 번의 실행 안에서 섞인다.
+# 저장소 밖 사본으로 옮겨 실행해 그 창을 없앤다.
+if [ -z "${DEPLOY_DETACHED:-}" ]; then
+    _copy="$(mktemp)"
+    cat "${BASH_SOURCE[0]}" > "$_copy"
+    DEPLOY_DETACHED="$_copy" DEPLOY_REPO_DIR="$REPO_DIR" exec bash "$_copy" "$@"
+fi
+trap 'rm -f "$DEPLOY_DETACHED"' EXIT
+
 TARGET="${1:?배포할 커밋 또는 태그를 지정해야 한다}"
 SERVICE=orca-backend
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_PATH="${APP_DATABASE_PATH:-$REPO_DIR/data/orca.db}"
 BACKUP_DIR="$REPO_DIR/data/backups"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
