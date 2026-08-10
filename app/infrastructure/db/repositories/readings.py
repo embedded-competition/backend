@@ -1,9 +1,3 @@
-"""수신 기록 저장소 + ORM↔domain 변환.
-
-센서 값은 Measure enum이 곧 컬럼명이라(measurements.py) 항목별 대입이 없다 —
-센서를 추가해도 이 파일은 안 바뀐다.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -25,19 +19,12 @@ class SqlAlchemyReadingRepository:
     session: Session
 
     def add_if_absent(self, reading: Reading) -> Reading | None:
-        """멱등 삽입. 조회 후 분기(check-then-act)는 경쟁 조건이라 upsert를 쓴다.
-
-        저장된 기록을 식별자와 함께 돌려준다 — 성공 여부만 돌려주면 방금 만든 행의
-        PK를 호출부가 알 수 없어 이 기록을 가리키는 FK가 전부 비게 된다.
-        이미 있으면 None이다. 중복은 실패가 아니라 LoRa 재전송의 정상 결과다.
-        """
         statement = (
             sqlite_insert(ReadingOrm)
             .values(**_to_columns(reading))
             .on_conflict_do_nothing(
                 index_elements=["device_id", "measured_at", "seq"],
             )
-            # RETURNING이 비면 충돌로 건너뛴 것 — rowcount보다 타입이 명확하다.
             .returning(ReadingOrm.id)
         )
         stored_id = self.session.scalars(statement).one_or_none()
@@ -53,7 +40,6 @@ class SqlAlchemyReadingRepository:
         end: datetime,
         limit: int,
     ) -> list[Reading]:
-        # 시간 범위와 상한을 항상 요구한다 — 무제한 조회는 RPi에서 OOM 경로.
         rows = self.session.scalars(
             select(ReadingOrm)
             .where(
@@ -105,7 +91,6 @@ def _values_of(row: ReadingOrm) -> dict[Measure, float]:
 
 
 def _signature_of(row: ReadingOrm) -> SignatureFlags | None:
-    """플래그가 하나도 없으면 노드가 signature를 안 보낸 것 — None으로 구분한다."""
     if row.sig_rise is None and row.sig_hold is None and row.sig_no_recover is None:
         return None
     return SignatureFlags(
@@ -117,7 +102,6 @@ def _signature_of(row: ReadingOrm) -> SignatureFlags | None:
 
 
 def _to_columns(reading: Reading) -> dict[str, object]:
-    """멱등 삽입(ON CONFLICT)에 쓰려고 dict로 낸다."""
     frame = reading.frame
     columns: dict[str, object] = {
         "device_id": reading.device_id,
@@ -138,6 +122,5 @@ def _to_columns(reading: Reading) -> dict[str, object]:
         "sig_no_recover": frame.signature.no_recover if frame.signature else None,
         "sig_hold_s": frame.signature.hold_s if frame.signature else None,
     }
-    # Measure.value == 컬럼명이라 항목 추가 시 이 함수는 안 바뀐다.
     columns.update({measure.value: frame.values.get(measure) for measure in Measure})
     return columns

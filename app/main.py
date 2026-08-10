@@ -1,5 +1,3 @@
-"""FastAPI 인스턴스 + lifespan + wiring. endpoint 정의는 여기 없다."""
-
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.domain.ports.frame_source import RawFrame
 from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.runtime import wiring
+from app.runtime.log_config import configure_logging
 from app.runtime.lora import create_frame_source
 from app.runtime.receiver import FrameReceiver
 from app.runtime.state import STATE_ATTRIBUTE, ReceiverLiveness, RuntimeState
@@ -30,7 +29,6 @@ VERSION = "0.1.0"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """자원 수명 단일 관리 지점. 모듈 import 시점에 부작용을 만들지 않는다."""
     settings: Settings = get_settings()
 
     engine = create_db_engine(
@@ -72,14 +70,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _schema_revision(engine: Engine) -> str | None:
-    """적용된 Alembic 리비전. 배포된 코드와 스키마가 어긋났는지 /health로 대조한다."""
     with engine.connect() as connection:
         return MigrationContext.configure(connection).get_current_revision()
 
 
 def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
     def remember_last_frame(_: RawFrame) -> None:
-        # 헬스체크가 "무선 두절"을 판단하는 근거.
         state.lora.observe(datetime.now(UTC))
 
     return FrameReceiver(
@@ -92,7 +88,6 @@ def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
 
 
 def _log_receiver_death(task: asyncio.Task[None]) -> None:
-    """수신 task가 조용히 죽으면 수신이 멈춘 걸 아무도 모른다."""
     if task.cancelled():
         return
     exception = task.exception()
@@ -101,12 +96,8 @@ def _log_receiver_death(task: asyncio.Task[None]) -> None:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """앱 팩토리. 테스트가 설정을 바꿔 다시 만들 수 있어야 한다.
-
-    모듈 전역 인스턴스를 두지 않는다 — import만으로 설정을 읽고 라우터를 붙이면
-    읽어 들이는 일과 실행하는 일이 한 덩어리가 된다. 배포는 `--factory`로 부른다.
-    """
     settings = settings or get_settings()
+    configure_logging(settings)
     app = FastAPI(
         title="Orca Backend",
         description="전동 킥보드 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
@@ -127,7 +118,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     register_exception_handlers(app)
-    # 앱 계약에 버전 prefix가 없다 (api-contract-reconciliation.md A1)
     app.include_router(health.router)
     app.include_router(devices.router)
     app.include_router(telemetry.router)

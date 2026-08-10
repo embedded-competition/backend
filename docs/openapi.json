@@ -471,8 +471,7 @@
           "ALARM",
           "FAULT"
         ],
-        "title": "AlertState",
-        "description": "노드가 판정해 올려보내는 상태. 서버는 재판정하지 않는다."
+        "title": "AlertState"
       },
       "ComponentHealth": {
         "properties": {
@@ -628,8 +627,7 @@
           "error",
           "requestId"
         ],
-        "title": "ErrorResponse",
-        "description": "전 endpoint 단일 에러 형식 (앱 api-spec.md §공통 에러).\n\n앱은 `error` 키만 읽는다. `requestId`는 서버 로그 대조용 부가 정보라\n추가해도 앱 계약이 깨지지 않는다."
+        "title": "ErrorResponse"
       },
       "EventListResponse": {
         "properties": {
@@ -749,8 +747,7 @@
           }
         },
         "type": "object",
-        "title": "GasChannelResponse",
-        "description": "raw(sraw·mv·baseline)는 없다 — 노드가 정규화값만 보낸다 (정합화 B2)."
+        "title": "GasChannelResponse"
       },
       "HTTPValidationError": {
         "properties": {
@@ -809,8 +806,7 @@
           "version",
           "components"
         ],
-        "title": "HealthResponse",
-        "description": "구성요소별로 나눠 반환한다 — 무선 두절이 200 OK로 보이면 안 된다."
+        "title": "HealthResponse"
       },
       "HistoryEventResponse": {
         "properties": {
@@ -1122,8 +1118,7 @@
           "noRecover",
           "holdS"
         ],
-        "title": "SignatureResponse",
-        "description": "판단 근거 3요소. 노드가 계산해 전송한다."
+        "title": "SignatureResponse"
       },
       "TelemetryResponse": {
         "properties": {

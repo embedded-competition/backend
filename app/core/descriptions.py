@@ -1,5 +1,3 @@
-"""이벤트 문구 생성. 서버 책임이다 (앱 C5 — 앱에 박으면 수정 시 스토어 심사)."""
-
 from __future__ import annotations
 
 from app.domain.value_objects import AlertState

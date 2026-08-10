@@ -1,5 +1,3 @@
-"""텔레메트리 조회 유스케이스. 집계·비교 계산은 aggregation·fleet에 위임한다."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +13,6 @@ from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepositor
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 
-# 하루치 원본 상한. 5분 주기면 288행이므로 여유를 두되 무제한은 두지 않는다.
 _DAY_SCAN_LIMIT = 2_000
 _EVENT_LIMIT = 200
 

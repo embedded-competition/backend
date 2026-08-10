@@ -1,5 +1,3 @@
-"""수신 카운터. 통신 품질 저하와 유실을 드러내는 유일한 지표다."""
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -21,7 +19,6 @@ class ReceiveStats:
         return {k: v for k, v in asdict(self).items() if not k.startswith("_")}
 
     def should_report(self, every: int) -> bool:
-        """N건마다 1줄만 남긴다 — 프레임마다 INFO를 찍으면 SD카드만 닳는다."""
         if self.received - self._last_logged < every:
             return False
         self._last_logged = self.received

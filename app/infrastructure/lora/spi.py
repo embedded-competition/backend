@@ -1,17 +1,9 @@
-"""SPI 트랜스포트. 레지스터 읽기·쓰기만 안다 — 칩 의미는 모른다.
-
-`spidev` import가 이 파일 밖으로 나가지 않는다. Mac·CI에는 SPI가 없으므로
-지연 import로 모듈 로드 자체는 어디서든 되게 한다.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Protocol
 
 
 class RegisterBus(Protocol):
-    """레지스터 단위 접근. 테스트는 이 Protocol의 fake를 주입한다."""
-
     def read(self, register: int) -> int: ...
 
     def write(self, register: int, value: int) -> None: ...
@@ -21,9 +13,7 @@ class RegisterBus(Protocol):
 
 class SpiRegisterBus:
     def __init__(self, bus: int, device: int, *, max_speed_hz: int = 5_000_000) -> None:
-        # PLC0415 noqa 근거: spidev는 ARM 전용이라 최상위 import하면 Mac·CI에서
-        # 모듈 로드 자체가 실패한다. 계층 회피가 아니라 플랫폼 격리다.
-        import spidev  # noqa: PLC0415
+        import spidev
 
         self._spi: Any = spidev.SpiDev()
         self._spi.open(bus, device)

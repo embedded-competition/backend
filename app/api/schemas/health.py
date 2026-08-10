@@ -1,5 +1,3 @@
-"""헬스체크 응답 DTO."""
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -26,8 +24,6 @@ class ComponentHealth(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """구성요소별로 나눠 반환한다 — 무선 두절이 200 OK로 보이면 안 된다."""
-
     model_config = ConfigDict(strict=True)
 
     status: Annotated[ComponentStatus, Field(description="구성요소 중 최악값")]

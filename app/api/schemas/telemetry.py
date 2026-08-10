@@ -1,9 +1,3 @@
-"""현재 상태 응답 DTO.
-
-**raw 센서값(sraw·mv·baseline·rsKohm·mvAvg)은 포함하지 않는다.**
-노드가 판정하고 정규화값만 전송하므로 서버가 채울 수 없다 (정합화 B2).
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -78,7 +72,6 @@ class TelemetryResponse(ApiModel):
     @classmethod
     def from_domain(cls, device: Device, reading: Reading | None) -> TelemetryResponse:
         if reading is None:
-            # 프레임을 한 번도 못 받았다. 상태를 지어내지 않는다.
             return cls(
                 state=device.last_state or AlertState.WARMUP,
                 gas=GasChannelResponse(),
@@ -111,7 +104,6 @@ def channel_of(frame: TelemetryFrame, channel: GasChannel) -> GasChannelResponse
 
 
 def _env_of(frame: TelemetryFrame) -> EnvResponse | None:
-    """묶음에 값이 하나도 없으면 그룹 자체를 안 내린다 — 미장착과 0을 구분."""
     temp = frame.value(Measure.TEMP_C)
     rh = frame.value(Measure.HUMIDITY_PCT)
     if temp is None and rh is None:

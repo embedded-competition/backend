@@ -1,5 +1,3 @@
-"""기기 등록·푸시 토큰 DTO."""
-
 from __future__ import annotations
 
 from typing import Annotated

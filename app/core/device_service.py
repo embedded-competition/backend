@@ -1,5 +1,3 @@
-"""기기 등록·인증 유스케이스. 조립만 한다 — 생성·정규화 규칙은 identity.py."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,8 +15,6 @@ from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRe
 
 @dataclass(frozen=True, slots=True)
 class DeviceRegistration:
-    """등록 결과. `token`은 이 순간에만 존재하고 어디에도 저장되지 않는다."""
-
     device: Device
     token: str
 
@@ -32,10 +28,6 @@ class DeviceService:
     default_management_phone: str | None = None
 
     def register(self, raw_mac: str) -> DeviceRegistration:
-        """MAC으로 기기를 등록하고 deviceToken을 발급한다.
-
-        이미 등록된 MAC은 거절한다 — 앱 spec §② 409 already_paired.
-        """
         mac = identity.normalize_mac(raw_mac)
         if self.devices.get_by_mac(mac) is not None:
             raise DeviceAlreadyPaired(f"이미 등록된 MAC: {mac}")
@@ -61,13 +53,12 @@ class DeviceService:
         return DeviceRegistration(device=device, token=token)
 
     def authenticate(self, token: str) -> Device:
-        """Bearer 토큰 → 소유 기기. 실패 사유는 전부 unauthorized로 뭉갠다."""
         token_hash = identity.hash_token(token)
         device_id = self.access_tokens.find_device_id(token_hash)
         if device_id is None:
             raise Unauthorized("유효하지 않은 deviceToken")
         device = self.devices.get(device_id)
-        if device is None:  # pragma: no cover - FK가 보장하지만 방어
+        if device is None:
             raise Unauthorized("토큰이 가리키는 기기가 없다")
         self.access_tokens.touch(token_hash, at=self.clock.now())
         return device
@@ -81,7 +72,6 @@ class DeviceService:
     def register_push_token(
         self, device: Device, token: str, platform: str | None = None
     ) -> PushToken:
-        """멱등 — 같은 토큰 재등록이 중복 행을 만들지 않는다."""
         return self.push_tokens.upsert(
             PushToken(
                 device_id=device.key,

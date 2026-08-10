@@ -1,5 +1,3 @@
-"""헬스체크 라우터."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -48,7 +46,7 @@ async def health(
 
 def _check_database(session: SessionDep) -> ComponentHealth:
     try:
-        session.execute(text("SELECT 1"))  # 가벼운 확인. 집계 쿼리 금지.
+        session.execute(text("SELECT 1"))
     except Exception as exc:
         return ComponentHealth(status=ComponentStatus.FAILED, detail=type(exc).__name__)
     return ComponentHealth(status=ComponentStatus.OK)

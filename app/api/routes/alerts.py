@@ -1,9 +1,3 @@
-"""경보 해제 라우터.
-
-앱은 해제 **요청**만 보낸다. 승인 판단은 서버 내부 규칙이고 사유는 내려주지 않는다
-(앱 spec O8).
-"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter

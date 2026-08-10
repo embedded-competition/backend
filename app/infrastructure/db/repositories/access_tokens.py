@@ -1,5 +1,3 @@
-"""deviceToken 저장소. 해시만 오간다 — 원문은 이 계층에 도달하지 않는다."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

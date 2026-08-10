@@ -1,8 +1,3 @@
-"""데모 시나리오 — 합성 프레임 생성. 방출 방식(주기·루프)은 모른다.
-
-하드웨어 없이 앱 전 화면을 검증하기 위한 데이터 소스다.
-"""
-
 from __future__ import annotations
 
 import math
@@ -22,7 +17,6 @@ class ScenarioStep:
     voc_slope: float
 
 
-# NORMAL 유지 → WATCH 승격 → ALARM 승격 → latch 유지
 DEFAULT_SCENARIO: tuple[ScenarioStep, ...] = (
     ScenarioStep(AlertState.NORMAL, 0.2, 0.1),
     ScenarioStep(AlertState.NORMAL, 0.4, 0.3),
@@ -34,8 +28,6 @@ DEFAULT_SCENARIO: tuple[ScenarioStep, ...] = (
 
 
 class ScenarioFrameFactory:
-    """시나리오 스텝 → TelemetryFrame."""
-
     def __init__(
         self,
         hw_id: str,

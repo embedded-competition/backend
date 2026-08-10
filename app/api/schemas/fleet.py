@@ -1,5 +1,3 @@
-"""같은 모델 비교 응답 DTO."""
-
 from __future__ import annotations
 
 from typing import Annotated

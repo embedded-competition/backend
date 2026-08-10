@@ -1,5 +1,3 @@
-"""통계 탭 응답 DTO — 날짜별 시간당 집계."""
-
 from __future__ import annotations
 
 from datetime import date

@@ -12,16 +12,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=orca
-Group=orca
+# 로그인 계정으로 그대로 돌린다. Pi 1대·단일 목적이라 전용 서비스 계정이 끊어 줄
+# 파급이 아직 없다. 상시 운영으로 가면 분리한다 (docs/deployment.md D10).
+User=user
+Group=user
 # SPI·GPIO 접근은 그룹 권한으로 해결한다. root로 실행하지 않는다.
 SupplementaryGroups=spi gpio
 
-WorkingDirectory=/home/orca/backend
-EnvironmentFile=/home/orca/backend/.env
+WorkingDirectory=/home/user/backend
+EnvironmentFile=/home/user/backend/.env
 
 # uv가 lock에 고정된 버전으로 실행한다. --frozen 없이 띄우지 않는다.
-ExecStart=/home/orca/.local/bin/uv run --frozen \
+ExecStart=/home/user/.local/bin/uv run --frozen \
     uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 1
 
 Restart=always

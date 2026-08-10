@@ -1,5 +1,3 @@
-"""텔레메트리 조회 라우터. 앱 폴링의 주 경로."""
-
 from __future__ import annotations
 
 from datetime import date, datetime

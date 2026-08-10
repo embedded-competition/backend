@@ -1,14 +1,8 @@
-"""알람 푸시 디스패치 유스케이스.
-
-**커밋 이후에 호출한다** — 커밋 전 발송은 롤백 시 유령 알림을 만든다.
-발송 실패가 측정값 저장을 되돌리지 않는다.
-"""
-
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from app.domain.alerting import Alert
 from app.domain.device import Device
@@ -26,6 +20,9 @@ class DispatchReport:
     attempted: int
     delivered: int
     deactivated: int
+
+    def as_dict(self) -> dict[str, int]:
+        return asdict(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,14 +46,12 @@ class NotificationService:
             if outcome.delivered:
                 delivered += 1
             elif outcome.permanent_failure:
-                # 무효 토큰을 방치하면 실패율이 계속 쌓인다.
                 token.deactivate(outcome.error_code or "permanent_failure")
                 self.push_tokens.save(token)
                 deactivated += 1
         return DispatchReport(attempted=len(tokens), delivered=delivered, deactivated=deactivated)
 
     async def _send_with_retry(self, alert: Alert, device: Device, token: str) -> _Outcome:
-        """지수 백오프 + 상한. 영구 실패는 즉시 중단한다."""
         last = _Outcome(delivered=False, error_code=None, permanent_failure=False)
         for attempt in range(1, self.max_attempts + 1):
             result = await self.sender.send(token=token, alert=alert, device=device)

@@ -1,5 +1,3 @@
-"""경보와 기록. readings의 요약이지 그 반대가 아니다."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,8 +11,6 @@ from app.domain.value_objects import AlertState, EventKind
 
 @dataclass(slots=True)
 class Alert:
-    """상태 전이 이벤트."""
-
     device_id: int
     from_state: AlertState
     to_state: AlertState
@@ -33,7 +29,6 @@ class Alert:
 
     @property
     def key(self) -> int:
-        """저장된 경보의 식별자. 저장 전에 부르면 실패한다."""
         return require_stored(self.id, "alert")
 
     @property
@@ -41,7 +36,6 @@ class Alert:
         return self.acknowledged_at is None
 
     def acknowledge(self, *, at: datetime, note: str | None = None) -> None:
-        """해제는 명시적 명령으로만. ALARM은 자동 해제되지 않는다."""
         if self.acknowledged_at is not None:
             raise AlertAlreadyAcknowledged(f"alert {self.id}는 이미 해제됨")
         self.acknowledged_at = require_aware(at, "at")
@@ -50,8 +44,6 @@ class Alert:
 
 @dataclass(slots=True)
 class Event:
-    """기록 탭 항목. description은 서버가 생성한다 (D10)."""
-
     device_id: int
     kind: EventKind
     occurred_at: datetime

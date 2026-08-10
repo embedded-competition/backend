@@ -1,0 +1,21 @@
+# 빠른 것만 훅에 둔다. mypy·pytest는 Makefile/CI가 돌린다 —
+# 커밋마다 수십 초를 뺏으면 --no-verify가 습관이 된다.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-toml
+      - id: check-yaml
+      - id: check-merge-conflict
+      # data/orca.db 같은 개발용 DB가 실수로 올라가는 것을 막는다.
+      - id: check-added-large-files
+        args: [--maxkb=512]

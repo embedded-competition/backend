@@ -1,9 +1,3 @@
-"""예외 핸들러 등록. 상태 매핑은 errors.py.
-
-응답 형식은 앱 계약(api-spec.md §공통 에러): `{"error": "<code>"}`.
-`requestId`를 덧붙이지만 앱은 `error` 키만 읽으므로 호환이 깨지지 않는다.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -25,7 +19,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _domain_error(request: Request, exc: DomainError) -> JSONResponse:
         request_id = _request_id(request)
         http_status = status_for(exc)
-        # 상세 메시지는 로그에만 — 응답에는 코드만 나간다.
         logger.warning(
             "domain error",
             extra={
@@ -46,7 +39,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, _exc: Exception) -> JSONResponse:
         request_id = _request_id(request)
-        # 스택·SQL·경로를 응답에 노출하지 않는다.
         logger.exception("unhandled error", extra={"request_id": request_id})
         return _error(status.HTTP_500_INTERNAL_SERVER_ERROR, "internal_error", request_id)
 

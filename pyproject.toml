@@ -91,6 +91,16 @@ max-complexity = 8
 max-args = 5
 
 [tool.ruff.lint.per-file-ignores]
+# 코드에 # noqa를 달지 않기로 했으므로 억제 근거는 전부 여기 적는다.
+# 하드웨어 라이브러리는 ARM 전용이라 최상위 import하면 Mac·CI에서 모듈 로드
+# 자체가 실패한다. 계층 회피가 아니라 플랫폼 격리다.
+"app/infrastructure/lora/spi.py" = ["PLC0415"]
+"app/infrastructure/lora/gpio.py" = ["PLC0415"]
+# _TOKEN_PREFIX는 비밀값이 아니라 토큰 문자열의 종류 식별 prefix다.
+"app/core/identity.py" = ["S105"]
+# device_id는 AuthenticatedDevice 의존성이 Path로 받아 소유권 검증에 쓴다.
+# ruff는 의존성 시그니처를 따라가지 못한다.
+"app/api/routes/devices.py" = ["FAST003"]
 # 테스트는 assert가 도구이고, 기대값 리터럴이 곧 명세다.
 "tests/*" = [
     "S101", "S105", "S106", "S107",  # assert·더미 토큰이 테스트의 도구다

@@ -1,5 +1,3 @@
-"""경보 저장소 + ORM↔domain 변환."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,11 +25,6 @@ class SqlAlchemyAlertRepository:
         return _to_domain(row) if row else None
 
     def list_active_for(self, device_id: int) -> list[Alert]:
-        """기기 하나의 미해제 경보. device_id로 걸러야 부분 인덱스가 쓰인다.
-
-        전체를 읽어 파이썬에서 거르면 ix_alerts_active(device_id)의 선행 컬럼이
-        조건에 없어 인덱스가 놀고, 읽는 양이 기기 수에 비례해 늘어난다.
-        """
         rows = self.session.scalars(
             select(AlertOrm)
             .where(AlertOrm.device_id == device_id, AlertOrm.acknowledged_at.is_(None))

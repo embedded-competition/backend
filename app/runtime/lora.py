@@ -1,8 +1,3 @@
-"""설정값 → FrameSource 조립.
-
-하드웨어 없는 환경(Mac·CI·앱 팀 검증)에서 앱이 막히지 않도록 fake를 주입할 수 있다.
-"""
-
 from __future__ import annotations
 
 import logging

@@ -1,5 +1,3 @@
-"""기록 저장소 + ORM↔domain 변환."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

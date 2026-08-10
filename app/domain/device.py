@@ -1,5 +1,3 @@
-"""기기 애그리게이트. 노드 1개 = 차량 1대 (docs/db-schema.md)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +13,6 @@ class Device:
     public_id: str
     mac: str
     label: str
-    # 앱이 MAC으로 먼저 등록하고, 노드 첫 프레임에서 hw_id가 채워진다
     hw_id: DeviceId | None = None
     parking_slot: str | None = None
     management_phone: str | None = None
@@ -23,7 +20,6 @@ class Device:
     frame_version: int | None = None
     is_active: bool = True
     registered_at: datetime | None = None
-    # 비정규화 필드 (D7) — 헬스체크·유실 판정 비용 절감
     last_seen_at: datetime | None = None
     last_seq: int | None = None
     last_state: AlertState | None = None
@@ -35,11 +31,9 @@ class Device:
 
     @property
     def key(self) -> int:
-        """저장된 기기의 식별자. 저장 전에 부르면 실패한다."""
         return require_stored(self.id, "device")
 
     def missed_frames_since(self, seq: int) -> int:
-        """seq 건너뜀 수. 유실률은 안테나·거리 문제의 유일한 정량 지표다."""
         if self.last_seq is None:
             return 0
         gap = seq - self.last_seq - 1
@@ -47,7 +41,6 @@ class Device:
 
     def observe(self, *, seq: int, at: datetime, state: AlertState) -> None:
         at = require_aware(at, "at")
-        # 재전송이 늦게 도착해도 최신 관측을 되돌리지 않는다.
         if self.last_seen_at is not None and at < self.last_seen_at:
             return
         self.last_seq = seq

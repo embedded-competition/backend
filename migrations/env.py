@@ -18,7 +18,9 @@ from app.infrastructure.db.orm import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers 기본값(True)은 alembic.ini에 없는 로거를 전부 끈다 —
+    # 인프로세스로 마이그레이션을 돌리면 app.* 로깅이 그 순간 조용히 죽는다.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # 호출자가 URL을 주입했으면 그걸 쓴다 (테스트가 임시 DB를 가리키게 하는 경로).
 # 주입이 없을 때만 Settings에서 채운다.

@@ -1,5 +1,3 @@
-"""경보 해제 요청·응답 DTO."""
-
 from __future__ import annotations
 
 from typing import Annotated

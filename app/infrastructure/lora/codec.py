@@ -1,9 +1,3 @@
-"""와이어 포맷 — 바이트 ↔ 원시 필드.
-
-이 모듈은 도메인 타입을 모른다. 오프셋·스케일·플래그·CRC 검증만 담당한다.
-포맷 SSOT는 docs/lora-frame.md.
-"""
-
 from __future__ import annotations
 
 import struct
@@ -16,15 +10,13 @@ from app.infrastructure.lora.crc import crc16_ccitt
 
 FRAME_VERSION = 1
 
-_HEADER = "<BB6sHIBH"  # version, flags, device_id, seq, measured_at, state, batt_mv
+_HEADER = "<BB6sHIBH"
 _HEADER_SIZE = struct.calcsize(_HEADER)
 _HOLD_S = "<H"
 _GPS = "<2f"
 _CRC = "<H"
 
-# int16 결측 센티널. 0으로 채우면 "정상 판독 0"과 구분되지 않는다.
 ABSENT = -32768
-# 센티널을 뺀 유효 범위. 하한이 -32768이 아닌 이유가 그것이다.
 SCALED_MIN = -32767
 SCALED_MAX = 32767
 _SCALE = 100.0
@@ -37,8 +29,6 @@ FLAG_SIG_NO_RECOVER = 1 << 4
 FLAG_WATER = 1 << 5
 FLAG_HAS_SIGNATURE = 1 << 6
 
-# 스케일 필드 순서는 domain.measurements.ORDER가 정한다 — 코덱이 따로 정의하면
-# 두 곳이 어긋난다. 새 항목은 반드시 ORDER 끝에 추가한다(중간 삽입은 오프셋을 민다).
 MEASURE_ORDER = measurements.ORDER
 _SCALED = f"<{len(MEASURE_ORDER)}h"
 _SCALED_SIZE = struct.calcsize(_SCALED)
@@ -49,8 +39,6 @@ GPS_SIZE = BASE_SIZE + 8
 
 @dataclass(frozen=True, slots=True)
 class WireFrame:
-    """디코딩된 원시 필드. 스케일은 풀렸고 의미 해석은 안 됐다."""
-
     version: int
     flags: int
     hw_id_hex: str
@@ -68,7 +56,6 @@ class WireFrame:
 
 
 def decode(payload: bytes) -> WireFrame:
-    """바이트 → 원시 필드. 길이·CRC 검증까지가 이 함수의 책임이다."""
     if len(payload) < BASE_SIZE:
         raise FrameTooShort(f"프레임이 {len(payload)}B, 최소 {BASE_SIZE}B 필요")
 
@@ -110,7 +97,6 @@ def decode(payload: bytes) -> WireFrame:
 
 
 def encode(frame: WireFrame) -> bytes:
-    """원시 필드 → 바이트. CRC를 붙여 완성한다."""
     body = struct.pack(
         _HEADER,
         frame.version,

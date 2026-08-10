@@ -1,8 +1,3 @@
-"""FrameSource 구현체 — 프레임을 언제 방출할지만 담당한다.
-
-프레임 내용은 scenario.py가, 바이트 인코딩은 frame.py가 만든다.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -16,12 +11,6 @@ from app.infrastructure.lora.scenario import ScenarioFrameFactory
 
 
 class FakeFrameSource:
-    """시나리오를 주기적으로 방출한다.
-
-    실제 바이트를 만들어 파서를 그대로 태운다 — 파서를 우회하면 fake로 통과한
-    코드가 실기기에서 깨진다.
-    """
-
     def __init__(
         self,
         factory: ScenarioFrameFactory,
@@ -40,7 +29,6 @@ class FakeFrameSource:
             yield RawFrame(
                 payload=build_frame(self._factory.build(seq)),
                 received_at=datetime.now(UTC),
-                # 거리에 따른 변동을 흉내낸다 — 화면에서 통신 품질 표시를 볼 수 있게
                 rssi=-70 - int(6 * math.sin(seq / 3)),
                 snr=7.5,
             )

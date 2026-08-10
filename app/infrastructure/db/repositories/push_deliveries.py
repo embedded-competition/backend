@@ -1,9 +1,3 @@
-"""푸시 발송 이력 저장소.
-
-도메인은 토큰 문자열로 말하고 테이블은 token_id FK로 저장한다 — 그 변환이
-이 저장소의 존재 이유다.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,7 +18,6 @@ class SqlAlchemyPushDeliveryRepository:
             select(PushTokenOrm.id).where(PushTokenOrm.token == delivery.token)
         )
         if token_id is None:
-            # 토큰이 사라진 뒤 도착한 결과. 이력을 버리지 않되 조용히 넘긴다.
             return delivery
         row = PushDeliveryOrm(
             alert_id=delivery.alert_id,

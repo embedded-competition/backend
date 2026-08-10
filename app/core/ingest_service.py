@@ -1,10 +1,3 @@
-"""프레임 1건 처리 유스케이스.
-
-수신 → 기기 확인 → 멱등 저장 → 전이 감지 → 알람·이벤트 기록.
-푸시 발송은 **하지 않는다** — 커밋 이후에 보내야 하므로 호출자에게 넘긴다
-(conventions/backend/architecture/service.md).
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,8 +20,6 @@ from app.infrastructure.db.repositories.readings import SqlAlchemyReadingReposit
 
 @dataclass(frozen=True, slots=True)
 class IngestOutcome:
-    """처리 결과. `alert`가 있으면 호출자가 커밋 후 푸시를 보낸다."""
-
     device: Device
     reading: Reading
     duplicate: bool
@@ -56,7 +47,6 @@ class IngestService:
 
         stored = self.readings.add_if_absent(received)
         if stored is None:
-            # LoRa 재전송. 중복은 정상 동작이므로 예외로 다루지 않는다.
             return IngestOutcome(device=device, reading=received, duplicate=True, missed_frames=0)
 
         missed = device.missed_frames_since(frame.seq)
@@ -74,10 +64,6 @@ class IngestService:
         )
 
     def _resolve_device(self, hw_id: DeviceId) -> Device:
-        """미등록 노드는 자동 등록하지 않는다 — 무선은 위조 가능한 경로다.
-
-        앱이 MAC으로 먼저 등록하므로, 첫 프레임에서 MAC↔hw_id를 연결해준다.
-        """
         device = self.devices.get_by_hw_id(hw_id)
         if device is None:
             device = self.devices.get_by_mac(_mac_from_hw_id(str(hw_id)))
@@ -92,7 +78,6 @@ class IngestService:
     def _record_transition(
         self, device: Device, frame: TelemetryFrame, reading: Reading
     ) -> Alert | None:
-        """상태가 그대로면 알람을 만들지 않는다 — heartbeat마다 통지가 나간다."""
         previous = device.last_state
         if previous is None or previous is frame.state:
             return None
@@ -124,7 +109,6 @@ def _mac_from_hw_id(hw_id_hex: str) -> str:
 
 
 def _to_reading(device: Device, frame: TelemetryFrame, raw: RawFrame) -> Reading:
-    """센서 값은 frame이 통째로 갖고 있다 — 필드를 옮겨 담지 않는다."""
     return Reading(
         device_id=device.key,
         frame=frame,

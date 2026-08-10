@@ -1,5 +1,3 @@
-"""요청 밖(백그라운드 task) 조립. 요청 스코프 조립은 providers.py."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
@@ -26,7 +24,6 @@ def session_scope_factory(
 ) -> Callable[[], AbstractContextManager[Session]]:
     @contextmanager
     def scope() -> Iterator[Session]:
-        """트랜잭션 경계 1개. 수신 task가 프레임 단위로 연다."""
         session = factory()
         try:
             yield session
@@ -51,7 +48,6 @@ def build_ingest_service(session: Session) -> IngestService:
 
 
 def create_push_sender(settings: Settings) -> PushSender:
-    """log 어댑터는 실기기 없이 알람 흐름을 그대로 검증한다."""
     if settings.push_delivery == "log":
         return LoggingPushSender()
     return ExpoPushSender(timeout_s=settings.push_timeout_s)

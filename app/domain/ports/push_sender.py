@@ -1,5 +1,3 @@
-"""푸시 발송 port. 제공자(Expo/FCM)는 어댑터가 안다."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +12,6 @@ class PushResult:
     delivered: bool
     error_code: str | None = None
     permanent_failure: bool = False
-    """True면 재시도하지 않고 토큰을 비활성화한다 (UNREGISTERED 등)."""
 
 
 class PushSender(Protocol):

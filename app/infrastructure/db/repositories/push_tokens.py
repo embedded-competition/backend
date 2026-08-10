@@ -1,5 +1,3 @@
-"""푸시 토큰 저장소 + ORM↔domain 변환."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +14,6 @@ class SqlAlchemyPushTokenRepository:
     session: Session
 
     def upsert(self, token: PushToken) -> PushToken:
-        """같은 토큰 재등록은 소유 기기만 갱신한다 — 중복 행을 만들지 않는다."""
         row = self.session.scalar(select(PushTokenOrm).where(PushTokenOrm.token == token.token))
         if row is None:
             row = PushTokenOrm()

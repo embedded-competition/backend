@@ -1,10 +1,3 @@
-"""원시 필드 ↔ domain 변환.
-
-와이어 포맷(오프셋·스케일·CRC)은 codec.py가, 이 모듈은 의미 해석만 담당한다.
-센서 값은 measurements dict로 통째 넘어가므로 항목별 대입이 없다.
-파서는 순수 함수다 — DB·로그·네트워크 접근 없음.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -56,7 +49,6 @@ def to_domain(wire: WireFrame) -> TelemetryFrame:
             location=_location_of(wire),
         )
     except ValueError as exc:
-        # 도메인 범위 검증 실패를 프레임 오류로 승격 — 수신 루프가 구분해 센다.
         raise FrameFieldError(str(exc)) from exc
 
 
@@ -83,7 +75,6 @@ def _location_of(wire: WireFrame) -> Coordinates | None:
 
 
 def _signature_of(wire: WireFrame) -> SignatureFlags | None:
-    """`has_signature`가 0이면 None — '전부 false'와 '안 보냄'은 다르다."""
     if not wire.has(codec.FLAG_HAS_SIGNATURE):
         return None
     return SignatureFlags(

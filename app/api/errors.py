@@ -1,5 +1,3 @@
-"""도메인 예외 → HTTP 상태 매핑표. 핸들러 등록은 exception_handlers.py."""
-
 from __future__ import annotations
 
 from fastapi import status
@@ -18,7 +16,6 @@ from app.domain.exceptions import (
     Unauthorized,
 )
 
-# 구체 예외부터 검사한다 — 상속 관계라 순서가 곧 우선순위다.
 _STATUS_BY_EXCEPTION: tuple[tuple[type[DomainError], int], ...] = (
     (Unauthorized, status.HTTP_401_UNAUTHORIZED),
     (DeviceNotFound, status.HTTP_404_NOT_FOUND),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -149,6 +150,31 @@ class TestReceiveLoop:
 
         assert receiver.stats.unknown_device == 2
         assert receiver.stats.stored == 0
+
+
+class TestDispatchLogging:
+    async def test_successful_dispatch_is_not_logged_as_failure(
+        self,
+        session_factory: sessionmaker[Session],
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """발송은 성공했는데 로그만 실패로 남으면 운영자는 푸시가 죽은 줄로 읽는다.
+
+        blanket except가 삼키므로 DB 단정만으로는 드러나지 않는다.
+        """
+        receiver = _receiver(session_factory, sender, _scenario_frames(len(DEFAULT_SCENARIO), now))
+
+        with caplog.at_level(logging.INFO, logger="app.runtime.receiver"):
+            await receiver.run()
+
+        assert sender.sent, "이 시나리오는 발송이 일어나야 한다"
+        assert "alert dispatch failed" not in caplog.text
+        dispatched = [r for r in caplog.records if r.getMessage() == "alert dispatched"]
+        assert dispatched
+        assert dispatched[0].attempted >= 1  # type: ignore[attr-defined]
 
 
 class TestPushRetry:

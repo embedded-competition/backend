@@ -1,9 +1,3 @@
-"""시간당 집계. 저장소·서비스를 모르는 순수 계산.
-
-항목별 평균을 따로 적지 않는다 — Measure를 순회하므로 센서가 늘어도 이 파일은
-바뀌지 않는다.
-"""
-
 from __future__ import annotations
 
 from collections import defaultdict
@@ -17,8 +11,6 @@ from app.domain.value_objects import AlertState
 
 @dataclass(frozen=True, slots=True)
 class HourlySample:
-    """시간당 집계 1건. 앱 통계 탭이 하루 24개까지 받는다."""
-
     hour: str
     state: AlertState
     values: dict[Measure, float] = field(default_factory=dict)
@@ -28,7 +20,6 @@ class HourlySample:
 
 
 def aggregate_hourly(rows: list[Reading]) -> list[HourlySample]:
-    """시간 버킷별 평균. 상태는 그 시간의 최악값 — 평균 내면 경보가 묻힌다."""
     buckets: dict[int, list[Reading]] = defaultdict(list)
     for row in rows:
         buckets[row.measured_at.hour].append(row)

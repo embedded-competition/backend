@@ -1,9 +1,3 @@
-"""LoRa 수신 루프.
-
-lifespan에서 뜬 장수 asyncio task. 프레임 1건 실패가 루프를 죽이지 않는다.
-저장은 IngestService, 발송은 NotificationService가 하고 이 모듈은 흐름만 잇는다.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -42,7 +36,6 @@ class FrameReceiver:
     stats: ReceiveStats = field(default_factory=ReceiveStats)
 
     async def run(self) -> None:
-        """취소될 때까지 돈다. 예외로 조용히 멈추지 않는 게 이 루프의 계약이다."""
         try:
             async for raw in self.source.frames():
                 self.stats.received += 1
@@ -52,7 +45,6 @@ class FrameReceiver:
                 if self.stats.should_report(_REPORT_EVERY):
                     logger.info("lora receive stats", extra=self.stats.as_dict())
         except asyncio.CancelledError:
-            # 정리 후 재전파 — 삼키면 서비스가 안 내려간다.
             logger.info("lora receiver cancelled", extra=self.stats.as_dict())
             raise
         finally:
@@ -63,7 +55,6 @@ class FrameReceiver:
             outcome = self._store(raw)
         except FrameError as exc:
             self._count_frame_error(exc)
-            # 무선 경로는 재현이 어렵다 — 원본 hex가 유일한 증거다.
             logger.warning(
                 "frame rejected",
                 extra={"code": exc.code, "payload": raw.payload.hex()},
@@ -74,7 +65,6 @@ class FrameReceiver:
             logger.warning("frame from unknown device", extra={"code": exc.code})
             return
         except Exception:
-            # 한 프레임 실패가 수신을 멈추게 하지 않는다.
             logger.exception("frame handling failed")
             return
 
@@ -95,17 +85,11 @@ class FrameReceiver:
         return outcome
 
     async def _dispatch(self, alert: Alert, device: Device) -> None:
-        """저장 커밋 이후에만 호출된다 (롤백 시 유령 알림 방지).
-
-        alert를 인자로 받는다 — outcome을 통째로 넘기면 "alert가 있다"를
-        assert로 다시 주장해야 하고, assert는 `python -O`에서 사라진다.
-        """
         try:
             with self.session_scope() as session:
                 report = await self.notifier_factory(session).dispatch(alert, device)
-            logger.info("alert dispatched", extra=report.__dict__)
+            logger.info("alert dispatched", extra=report.as_dict())
         except Exception:
-            # 발송 실패가 측정값 저장을 되돌리지 않는다.
             logger.exception("alert dispatch failed")
 
     def _count_frame_error(self, exc: FrameError) -> None:

@@ -1,8 +1,3 @@
-"""기기 저장소 + ORM↔domain 변환.
-
-변환 함수는 비공개다 — 이 저장소 밖에서 쓰이면 ORM 타입이 계층을 넘는다.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

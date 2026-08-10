@@ -1,5 +1,3 @@
-"""서비스 조립(wiring). 구현체를 Protocol에 꽂는 유일한 지점 중 하나."""
-
 from __future__ import annotations
 
 from typing import Annotated
