@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import hypothesis
 import pytest
 import schemathesis
 from alembic import command
@@ -58,6 +59,19 @@ def single_error_shape(ctx: Any, response: Any, case: Any) -> None:
     )
 
 
+# 경로 파라미터가 제약 없는 문자열이라 생성값의 상당수가 걸러진다. 이는 API의
+# 결함이 아니라 생성기의 성질이고, 억제하지 않으면 시드에 따라 무작위로 실패한다
+# (pytest-randomly가 매 실행 시드를 바꾼다). 배포 게이트가 비결정적이면 게이트가 아니다.
+#
+# 예제마다 lifespan이 한 번씩 돌아 예제 단가가 크다. 느린 러너에서 시간 기반
+# 판정이 걸리는 것도 같은 이유로 막는다.
 @schema.parametrize()
+@hypothesis.settings(
+    suppress_health_check=[
+        hypothesis.HealthCheck.filter_too_much,
+        hypothesis.HealthCheck.too_slow,
+    ],
+    deadline=None,
+)
 def test_contract(case: Any) -> None:
     case.call_and_validate(checks=[schemathesis.checks.not_a_server_error, single_error_shape])
