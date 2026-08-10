@@ -244,14 +244,28 @@ Pi가 1대뿐이고 두 번째를 두는 비용이 얻는 것보다 크다. 대�
 ```bash
 ssh user@pi.local
 
-sudo usermod -aG spi,gpio user          # 재로그인해야 반영된다
-curl -LsSf https://astral.sh/uv/install.sh | sh   # /home/user/.local/bin/uv
-git clone https://github.com/embedded-competition/backend.git ~/backend
-cp ~/backend/.env.example ~/backend/.env          # 값 채우기 (D6)
+# Raspberry Pi OS Lite에는 git이 없다. spidev는 aarch64 휠이 없어 소스 빌드로
+# 넘어가므로 Python 헤더와 컴파일러가 필요하다.
+sudo apt-get update && sudo apt-get install -y git python3-dev build-essential
 
-sudo cp ~/backend/deploy/orca-backend.service /etc/systemd/system/
+sudo usermod -aG spi,gpio user                    # 재로그인해야 반영된다
+curl -LsSf https://astral.sh/uv/install.sh | sh   # /home/user/.local/bin/uv
+
+git clone https://github.com/embedded-competition/backend.git ~/backend
+cd ~/backend
+cp .env.example .env                              # 값 채우기 (D6)
+
+mkdir -p data
+uv run alembic upgrade head
+
+sudo cp deploy/orca-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now orca-backend
 ```
+
+기동에 약 9초가 걸린다. 그 전에 헬스체크를 치면 연결 거부가 뜬다.
+
+SX1276을 아직 안 붙였으면 `/dev/spidev*`가 없다. `raspi-config`로 SPI를 켜기 전에는
+`APP_LORA_SOURCE=fake`로 둔다 — 배포 경로와 하드웨어를 분리해 검증한다(D8과 같은 이유).
 
 ### 2. 터널·Access·배포 키
 

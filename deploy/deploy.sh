@@ -25,7 +25,8 @@ echo "== 2. 코드 동기화 =="
 git fetch --all --tags
 git checkout --detach "$TARGET"
 # --extra pi: spidev·gpiozero는 Pi에만 설치한다. 빼면 uv sync가 venv에서 지운다.
-uv sync --frozen --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
+# --no-dev: alembic은 런타임 의존이라 마이그레이션에 필요한 것은 다 들어온다.
+uv sync --frozen --no-dev --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
 
 echo "== 3. 서비스 중지 + DB 백업 =="
 sudo systemctl stop "$SERVICE" || true
