@@ -6,6 +6,11 @@
 # 문서에만 적힌 수동 명령 나열을 만들지 않기 위해 스크립트가 SSOT다.
 set -euo pipefail
 
+# 비대화형 SSH는 로그인 프로필을 읽지 않는다. uv 설치 경로를 직접 얹는다 —
+# 이 경로는 systemd unit의 ExecStart와 같은 전제다.
+PATH="$HOME/.local/bin:$PATH"
+export PATH
+
 TARGET="${1:?배포할 커밋 또는 태그를 지정해야 한다}"
 SERVICE=orca-backend
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
