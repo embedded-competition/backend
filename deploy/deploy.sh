@@ -65,14 +65,25 @@ uv run alembic upgrade head
 
 echo "== 5. 기동 =="
 sudo systemctl start "$SERVICE"
-sleep 3
-systemctl is-active --quiet "$SERVICE" || { echo "기동 실패"; journalctl -u "$SERVICE" -n 50 --no-pager; exit 1; }
 
 echo "== 6. 헬스체크 =="
 # 경로에 버전 prefix가 없다 — 앱 계약과 같은 경로를 친다 (main.py의 라우터 등록).
-curl -fsS http://localhost:8000/health | tee /dev/stderr | grep -q '"status"' || {
-    echo "헬스체크 실패"; exit 1;
-}
+# 기동은 Pi Zero 2W에서 10초 가까이 걸린다. 고정 대기는 느린 날 거짓 실패를 만들고
+# 빠른 날 시간을 버린다. 응답을 조건으로 기다리되 상한을 둔다.
+READY_TIMEOUT_S=90
+DEADLINE=$((SECONDS + READY_TIMEOUT_S))
+until curl -fsS http://localhost:8000/health 2>/dev/null | grep -q '"status"'; do
+    systemctl is-active --quiet "$SERVICE" || {
+        echo "기동 실패"; journalctl -u "$SERVICE" -n 50 --no-pager; exit 1
+    }
+    if [ "$SECONDS" -ge "$DEADLINE" ]; then
+        echo "헬스체크 실패 — ${READY_TIMEOUT_S}초 안에 응답이 없다"
+        journalctl -u "$SERVICE" -n 50 --no-pager
+        exit 1
+    fi
+    sleep 2
+done
+curl -fsS http://localhost:8000/health
 
 echo "== 7. 실측 기록 =="
 PID="$(systemctl show -p MainPID --value "$SERVICE")"
