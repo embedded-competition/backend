@@ -230,8 +230,8 @@ Pi가 1대뿐이고 두 번째를 두는 비용이 얻는 것보다 크다. 대�
 | `deploy/deploy.sh` | 있음 — fetch·sync·백업·마이그레이션·재시작·헬스체크 |
 | `deploy/orca-backend.service` | 있음 — `--factory`, `MemoryMax`, journald |
 | `.github/workflows/ci.yml` | 있음 |
-| `.github/workflows/deploy.yml` | **없음** |
-| `deploy.sh` 자동 롤백 | **없음** (안내문만) |
+| `.github/workflows/deploy.yml` | 있음 — 태그 트리거, ci 재실행, 공개 경로 검증, 실패 시 롤백 |
+| `deploy/rollback.sh` | 있음 — manifest 기반. deploy.sh와 Actions가 모두 부른다 |
 | cloudflared unit 파일 | 만들지 않음 — `cloudflared service install`이 생성한다 |
 | cloudflared `config.yml` | 저장소에 두지 않음 — UUID가 Pi마다 달라 [cloudflare-setup.md](cloudflare-setup.md)가 SSOT |
 
