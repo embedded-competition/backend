@@ -4,7 +4,7 @@
 #   ./deploy/deploy.sh <target-commit-or-tag>
 #
 # 문서에만 적힌 수동 명령 나열을 만들지 않기 위해 스크립트가 SSOT다.
-set -euo pipefail
+set -Eeuo pipefail
 
 # 비대화형 SSH는 로그인 프로필을 읽지 않는다. uv 설치 경로를 직접 얹는다 —
 # 이 경로는 systemd unit의 ExecStart와 같은 전제다.
@@ -21,21 +21,50 @@ if [ -z "${DEPLOY_DETACHED:-}" ]; then
     cat "${BASH_SOURCE[0]}" > "$_copy"
     DEPLOY_DETACHED="$_copy" DEPLOY_REPO_DIR="$REPO_DIR" exec bash "$_copy" "$@"
 fi
-trap 'rm -f "$DEPLOY_DETACHED"' EXIT
+
+# 어떤 경로로 죽든 되돌린다. ERR 트랩만으로는 명시적 exit 1을 못 잡는다.
+# 되돌릴 지점을 기록하기 전에는 롤백할 대상이 없으므로 무장하지 않는다.
+on_exit() {
+    exit_code=$?
+    rm -f "$DEPLOY_DETACHED"
+    [ "$exit_code" -eq 0 ] && exit 0
+    if [ -n "${ROLLBACK_ARMED:-}" ]; then
+        echo
+        echo "== 배포 실패 (exit $exit_code) — 자동 롤백 =="
+        "$REPO_DIR/deploy/rollback.sh" || echo "롤백도 실패했다. 수동 개입이 필요하다."
+    fi
+    exit "$exit_code"
+}
+trap on_exit EXIT
 
 TARGET="${1:?배포할 커밋 또는 태그를 지정해야 한다}"
 SERVICE=orca-backend
 DB_PATH="${APP_DATABASE_PATH:-$REPO_DIR/data/orca.db}"
 BACKUP_DIR="$REPO_DIR/data/backups"
+MANIFEST="$BACKUP_DIR/last-deploy.env"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 cd "$REPO_DIR"
+
+# 되돌릴 지점을 파일로 남긴다. 이 프로세스가 죽어도 rollback.sh가 읽을 수 있어야 하고,
+# 공개 경로 검증이 실패했을 때는 Actions가 이 스크립트 없이 롤백을 부른다.
+record_rollback_point() {
+    mkdir -p "$BACKUP_DIR"
+    cat > "$MANIFEST" <<MANIFEST
+PREV_COMMIT=$PREV_COMMIT
+DB_PATH=$DB_PATH
+BACKUP_DIR=$BACKUP_DIR
+BACKUP_STAMP=${1:-}
+MANIFEST
+}
 
 echo "== 1. 배포 전 상태 기록 =="
 PREV_COMMIT="$(git rev-parse HEAD)"
 echo "현재 커밋: $PREV_COMMIT"
 systemctl is-active --quiet "$SERVICE" && echo "서비스: active" || echo "서비스: inactive"
 df -h "$REPO_DIR" | tail -1
+record_rollback_point
+ROLLBACK_ARMED=1
 
 echo "== 2. 코드 동기화 =="
 git fetch --all --tags
@@ -55,6 +84,7 @@ if [ -f "$DB_PATH" ]; then
     # 확인 없는 백업은 백업이 아니다.
     [ -s "$BACKUP_FILE" ] || { echo "백업 실패: $BACKUP_FILE 가 비었다"; exit 1; }
     echo "백업 완료: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+    record_rollback_point "$STAMP"
 else
     echo "DB 파일 없음 — 최초 배포로 간주"
 fi
@@ -97,9 +127,7 @@ cat <<EOF
   현재 커밋: $(git rev-parse HEAD)
   백업:      $BACKUP_DIR/*.$STAMP
 
-롤백이 필요하면:
-  sudo systemctl stop $SERVICE
-  git checkout --detach $PREV_COMMIT && uv sync --frozen --extra pi
-  cp $BACKUP_DIR/\$(basename "$DB_PATH").$STAMP $DB_PATH
-  sudo systemctl start $SERVICE
+이 배포가 실패했다면 롤백은 이미 자동으로 돌았다.
+배포 후에 문제를 발견한 경우에만 직접 부른다:
+  ./deploy/rollback.sh
 EOF

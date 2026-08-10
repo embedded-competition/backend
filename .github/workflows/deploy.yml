@@ -1,0 +1,88 @@
+name: deploy
+
+# main 머지가 아니라 semver 태그가 배포를 결정한다 (docs/deployment.md D4).
+# 재시작은 LoRa 수신을 끊으므로 시점을 사람이 고른다.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+# Pi가 1대다. 배포가 겹치면 서로의 체크아웃을 덮는다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      # Pi는 NAT 뒤에 있다. Access 뒤의 SSH에 닿는 유일한 경로다 (D3).
+      - name: cloudflared 설치
+        run: |
+          curl -fsSL -o /tmp/cloudflared.deb \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+
+      - name: SSH 자격 준비
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      # deploy.sh가 SSOT다. 여기서 배포 절차를 다시 쓰지 않는다.
+      # 실패하면 deploy.sh가 스스로 롤백하고 0이 아닌 코드로 끝난다.
+      - name: 배포
+        id: deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          ssh -o ProxyCommand="cloudflared access ssh --hostname %h \
+                --service-token-id $CF_ACCESS_CLIENT_ID \
+                --service-token-secret $CF_ACCESS_CLIENT_SECRET" \
+              -o ConnectTimeout=30 \
+              "user@$DEPLOY_HOST" \
+              "cd ~/backend && git fetch --all --tags && ./deploy/deploy.sh '$GITHUB_REF_NAME'"
+
+      # deploy.sh의 헬스체크는 localhost다. 터널·DNS·Access가 깨졌어도 통과한다.
+      # 앱이 실제로 쓰는 경로를 밖에서 확인해야 배포가 끝난 것이다.
+      - name: 공개 경로 검증
+        env:
+          PUBLIC_HEALTH_URL: ${{ secrets.PUBLIC_HEALTH_URL }}
+        run: |
+          for attempt in $(seq 1 10); do
+            if curl -fsS -m 15 "$PUBLIC_HEALTH_URL" | tee /dev/stderr | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            echo "재시도 $attempt/10"
+            sleep 6
+          done
+          echo "공개 경로에서 확인하지 못했다"
+          exit 1
+
+      # deploy.sh가 실패한 경우는 이미 되돌아갔다. 이 단계가 잡는 것은
+      # "Pi에서는 성공했는데 밖에서 안 보이는" 경우뿐이다.
+      - name: 공개 검증 실패 시 롤백
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          ssh -o ProxyCommand="cloudflared access ssh --hostname %h \
+                --service-token-id $CF_ACCESS_CLIENT_ID \
+                --service-token-secret $CF_ACCESS_CLIENT_SECRET" \
+              -o ConnectTimeout=30 \
+              "user@$DEPLOY_HOST" \
+              "cd ~/backend && ./deploy/rollback.sh"

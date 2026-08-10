@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # deploy.yml이 태그 커밋 기준으로 같은 게이트를 다시 돌린다.
+  # 배포 전용 체크를 따로 만들지 않는다.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
