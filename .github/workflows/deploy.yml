@@ -21,6 +21,9 @@ jobs:
   deploy:
     needs: ci
     runs-on: ubuntu-latest
+    # 시크릿이 이 환경에 묶여 있다. 선언하지 않으면 secrets.*가 전부 빈 문자열로
+    # 넘어가고, 실패가 아니라 "인증 없이 붙으려다 거부됨"으로 나타난다.
+    environment: prod
     steps:
       # Pi는 NAT 뒤에 있다. Access 뒤의 SSH에 닿는 유일한 경로다 (D3).
       - name: cloudflared 설치
