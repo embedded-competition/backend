@@ -12,9 +12,7 @@ from alembic import command
 from alembic.config import Config
 
 from app.core.config import Settings
-from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.main import create_app
-from app.runtime.state import STATE_ATTRIBUTE, RuntimeState
 
 pytestmark = pytest.mark.contract
 
@@ -36,14 +34,11 @@ _FRAMEWORK_KEYS = {"detail"}
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _prepared_app() -> None:
-    """lifespan이 채우는 것을 직접 채운다 — ASGI 전송은 lifespan을 태우지 않는다."""
+def _migrated_db() -> None:
+    """스키마만 만든다. 나머지는 lifespan이 _SETTINGS 그대로 연다."""
     alembic_config = Config("alembic.ini")
     alembic_config.set_main_option("sqlalchemy.url", _SETTINGS.database_url)
     command.upgrade(alembic_config, "head")
-
-    engine = create_db_engine(_SETTINGS.database_path)
-    setattr(_APP.state, STATE_ATTRIBUTE, RuntimeState(create_session_factory(engine)))
 
 
 @schemathesis.check

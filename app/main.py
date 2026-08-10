@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 
 from alembic.runtime.migration import MigrationContext
@@ -27,46 +27,54 @@ logger = logging.getLogger(__name__)
 VERSION = "0.1.0"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings: Settings = get_settings()
+def build_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    """호출자가 준 설정으로 실행 자원을 연다.
 
-    engine = create_db_engine(
-        settings.database_path, busy_timeout_ms=settings.sqlite_busy_timeout_ms
-    )
-    state = RuntimeState(
-        session_factory=create_session_factory(engine),
-        schema_revision=_schema_revision(engine),
-        lora=ReceiverLiveness(enabled=settings.lora_enabled),
-    )
-    setattr(app.state, STATE_ATTRIBUTE, state)
+    settings를 인자로 받는 이유 — 전역에서 다시 읽으면 create_app(settings)의
+    주입이 시늉만 하게 된다. 만든 앱과 실제로 붙는 DB가 달라진다.
+    """
 
-    receiver: FrameReceiver | None = None
-    if settings.lora_enabled:
-        receiver = _build_receiver(state, settings)
-        state.lora.task = asyncio.create_task(receiver.run(), name="lora-receiver")
-        state.lora.task.add_done_callback(_log_receiver_death)
-
-    logger.info(
-        "app started",
-        extra={
-            "version": VERSION,
-            "environment": settings.environment,
-            "database": str(settings.database_path),
-            "schema_revision": state.schema_revision,
-            "lora_source": settings.lora_source,
-            "push_delivery": settings.push_delivery,
-        },
-    )
-    try:
-        yield
-    finally:
-        await state.lora.stop()
-        engine.dispose()
-        logger.info(
-            "app stopped",
-            extra=receiver.stats.as_dict() if receiver is not None else {},
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        engine = create_db_engine(
+            settings.database_path, busy_timeout_ms=settings.sqlite_busy_timeout_ms
         )
+        state = RuntimeState(
+            session_factory=create_session_factory(engine),
+            settings=settings,
+            schema_revision=_schema_revision(engine),
+            lora=ReceiverLiveness(enabled=settings.lora_enabled),
+        )
+        setattr(app.state, STATE_ATTRIBUTE, state)
+
+        receiver: FrameReceiver | None = None
+        if settings.lora_enabled:
+            receiver = _build_receiver(state, settings)
+            state.lora.task = asyncio.create_task(receiver.run(), name="lora-receiver")
+            state.lora.task.add_done_callback(_log_receiver_death)
+
+        logger.info(
+            "app started",
+            extra={
+                "version": VERSION,
+                "environment": settings.environment,
+                "database": str(settings.database_path),
+                "schema_revision": state.schema_revision,
+                "lora_source": settings.lora_source,
+                "push_delivery": settings.push_delivery,
+            },
+        )
+        try:
+            yield
+        finally:
+            await state.lora.stop()
+            engine.dispose()
+            logger.info(
+                "app stopped",
+                extra=receiver.stats.as_dict() if receiver is not None else {},
+            )
+
+    return lifespan
 
 
 def _schema_revision(engine: Engine) -> str | None:
@@ -102,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="Orca Backend",
         description="전동 킥보드 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
         version=VERSION,
-        lifespan=lifespan,
+        lifespan=build_lifespan(settings),
         docs_url="/docs" if settings.enable_docs else None,
         redoc_url="/redoc" if settings.enable_docs else None,
         openapi_url="/openapi.json" if settings.enable_docs else None,

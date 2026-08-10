@@ -6,12 +6,8 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.runtime.state import STATE_ATTRIBUTE, RuntimeState
-
-
-def settings_dep() -> Settings:
-    return get_settings()
 
 
 def runtime_state_dep(request: Request) -> RuntimeState:
@@ -19,6 +15,10 @@ def runtime_state_dep(request: Request) -> RuntimeState:
     if not isinstance(state, RuntimeState):
         raise RuntimeError("lifespan이 RuntimeState를 올리지 않았다")
     return state
+
+
+def settings_dep(state: Annotated[RuntimeState, Depends(runtime_state_dep)]) -> Settings:
+    return state.settings
 
 
 def session_dep(state: Annotated[RuntimeState, Depends(runtime_state_dep)]) -> Iterator[Session]:

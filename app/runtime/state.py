@@ -6,6 +6,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.config import Settings
+
 STATE_ATTRIBUTE = "runtime"
 
 
@@ -36,5 +38,6 @@ class ReceiverLiveness:
 @dataclass(slots=True)
 class RuntimeState:
     session_factory: sessionmaker[Session]
+    settings: Settings
     schema_revision: str | None = None
     lora: ReceiverLiveness = field(default_factory=lambda: ReceiverLiveness(enabled=False))
