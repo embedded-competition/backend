@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.domain.value_objects import AlertState, EventKind
+from app.domain.value_objects import AlertState, EventKind, Period
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from tests.builders import an_alert
@@ -46,8 +46,11 @@ class TestWithActiveAlarm:
         session.rollback()  # 읽기 트랜잭션 스냅샷을 끊어야 새 커밋이 보인다
 
         # 서버는 SystemClock으로 기록한다 — fixture 시각 기준 창을 쓰면 어긋난다.
-        events = SqlAlchemyEventRepository(session).list_since(
-            device_id, since=datetime(2020, 1, 1, tzinfo=UTC), limit=10
+        recorded_at = datetime.now(UTC)
+        events = SqlAlchemyEventRepository(session).list_in_period(
+            device_id,
+            Period(recorded_at - timedelta(days=1), recorded_at + timedelta(days=1)),
+            limit=10,
         )
         assert [e.kind for e in events] == [EventKind.ACTION]
         assert "경보 해제" in events[0].description

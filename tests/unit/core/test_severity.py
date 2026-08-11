@@ -53,3 +53,20 @@ class TestStateFor:
     def test_round_trip_from_each_state(self) -> None:
         for state in (AlertState.NORMAL, AlertState.FAULT, AlertState.WATCH, AlertState.ALARM):
             assert state_for(float(severity_of(state))) == state
+
+
+class TestStateOrdering:
+    """AlertState.severity는 저장소가 SQL CASE로 옮겨 쓴다 — core와 어긋나면 버킷 상태가 틀린다."""
+
+    def test_agrees_with_core_severity(self) -> None:
+        ordered = sorted(AlertState, key=lambda state: state.severity)
+        scores = [severity_of(state) for state in ordered]
+
+        assert scores == sorted(scores)
+
+    def test_alarm_is_the_worst(self) -> None:
+        assert max(AlertState, key=lambda state: state.severity) is AlertState.ALARM
+
+    def test_severity_round_trips(self) -> None:
+        for state in AlertState:
+            assert AlertState.of_severity(state.severity) is state

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.domain.frames import Coordinates
 from app.domain.measurements import Measure
-from app.domain.value_objects import AlertState, GasChannel, SignatureFlags
+from app.domain.value_objects import (
+    AlertState,
+    GasChannel,
+    Interval,
+    Period,
+    SignatureFlags,
+)
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from tests.builders import a_frame, a_reading
 
@@ -140,41 +146,139 @@ class TestValueRoundTrip:
         assert stored.frame.location is None
 
 
-class TestRangeQuery:
-    def test_respects_bounds_and_orders_newest_first(
-        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+class TestBucketMaxima:
+    def test_same_hour_on_different_days_stays_apart(
+        self, readings: SqlAlchemyReadingRepository, device_id: int
     ) -> None:
-        _fill(readings, device_id, now, count=5)
+        """시각만으로 묶으면 8/4 14시와 8/7 14시가 한 칸으로 합쳐진다."""
+        first = datetime(2026, 8, 4, 14, 0, tzinfo=UTC)
+        third = datetime(2026, 8, 7, 14, 0, tzinfo=UTC)
+        _store(readings, device_id, first, seq=1, voc_dev=1.0)
+        _store(readings, device_id, third, seq=2, voc_dev=9.0)
 
-        window = readings.list_in_range(
+        buckets = readings.bucket_maxima(
             device_id,
-            start=now + timedelta(minutes=1),
-            end=now + timedelta(minutes=3),
-            limit=10,
+            Period(datetime(2026, 8, 4, tzinfo=UTC), datetime(2026, 8, 8, tzinfo=UTC)),
+            Interval.parse("1h"),
         )
 
-        assert len(window) == 3
-        assert [r.seq for r in window] == [3, 2, 1]
+        assert len(buckets) == 2
+        assert [b.value(Measure.VOC_DEV) for b in buckets] == [1.0, 9.0]
+        assert buckets[0].start == first
+        assert buckets[1].start == third
 
-    def test_limit_caps_result(
+    def test_takes_maximum_not_mean(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
     ) -> None:
-        _fill(readings, device_id, now, count=5)
+        """평균은 스파이크를 지운다 — 지워진 스파이크가 곧 놓친 경보다."""
+        for index, value in enumerate([0.0, 8.0, 0.0]):
+            _store(readings, device_id, now + timedelta(minutes=index), seq=index, voc_dev=value)
 
-        window = readings.list_in_range(device_id, start=now, end=now + timedelta(hours=1), limit=2)
-
-        assert len(window) == 2
-
-
-def _fill(
-    readings: SqlAlchemyReadingRepository, device_id: int, now: datetime, *, count: int
-) -> None:
-    for offset in range(count):
-        at = now + timedelta(minutes=offset)
-        readings.add_if_absent(
-            a_reading(
-                at,
-                device_id=device_id,
-                frame=a_frame(at, seq=offset, state=AlertState.NORMAL),
-            )
+        buckets = readings.bucket_maxima(
+            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
         )
+
+        assert len(buckets) == 1
+        assert buckets[0].value(Measure.VOC_DEV) == pytest.approx(8.0)
+        assert buckets[0].samples == 3
+
+    def test_worst_state_wins_inside_a_bucket(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        for index, state in enumerate([AlertState.NORMAL, AlertState.ALARM, AlertState.WATCH]):
+            _store(readings, device_id, now + timedelta(minutes=index), seq=index, state=state)
+
+        buckets = readings.bucket_maxima(
+            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
+        )
+
+        assert buckets[0].state is AlertState.ALARM
+
+    def test_gaps_are_omitted_not_zero_filled(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        _store(readings, device_id, now, seq=1, voc_dev=1.0)
+        _store(readings, device_id, now + timedelta(hours=3), seq=2, voc_dev=2.0)
+
+        period = Period(now, now + timedelta(hours=4))
+        buckets = readings.bucket_maxima(device_id, period, Interval.parse("1h"))
+
+        assert [b.start for b in buckets] == [now, now + timedelta(hours=3)]
+        assert period.bucket_count(Interval.parse("1h")) == 4
+
+    def test_reads_beyond_the_old_two_thousand_row_cap(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        """예전 구현은 최근 2000행만 읽어 앞쪽 날짜를 조용히 비웠다."""
+        for index in range(2_100):
+            _store(readings, device_id, now + timedelta(seconds=index), seq=index, voc_dev=1.0)
+        _store(readings, device_id, now, seq=99_999, voc_dev=7.0)
+
+        buckets = readings.bucket_maxima(
+            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
+        )
+
+        assert buckets[0].samples == 2_101
+        assert buckets[0].value(Measure.VOC_DEV) == pytest.approx(7.0)
+
+
+class TestChannelPeak:
+    def test_reports_value_and_when_it_happened(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        peak_at = now + timedelta(minutes=2)
+        _store(readings, device_id, now, seq=1, voc_dev=1.0)
+        _store(readings, device_id, peak_at, seq=2, voc_dev=8.1, state=AlertState.WATCH)
+        _store(readings, device_id, now + timedelta(minutes=4), seq=3, voc_dev=0.5)
+
+        peak = readings.channel_peak(
+            device_id, Period(now, now + timedelta(hours=1)), GasChannel.VOC
+        )
+
+        assert peak is not None
+        assert peak.deviation == pytest.approx(8.1)
+        assert peak.at == peak_at
+        assert peak.state is AlertState.WATCH
+
+    def test_channel_without_any_value_has_no_peak(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        _store(readings, device_id, now, seq=1, voc_dev=1.0)
+
+        assert (
+            readings.channel_peak(device_id, Period(now, now + timedelta(hours=1)), GasChannel.CO)
+            is None
+        )
+
+
+class TestWorstState:
+    def test_returns_none_when_period_is_empty(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        assert readings.worst_state(device_id, Period(now, now + timedelta(hours=1))) is None
+
+    def test_end_is_excluded(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        _store(readings, device_id, now + timedelta(hours=1), seq=1, state=AlertState.ALARM)
+
+        assert readings.worst_state(device_id, Period(now, now + timedelta(hours=1))) is None
+
+
+def _store(
+    readings: SqlAlchemyReadingRepository,
+    device_id: int,
+    at: datetime,
+    *,
+    seq: int,
+    voc_dev: float | None = None,
+    state: AlertState = AlertState.NORMAL,
+) -> None:
+    values = {} if voc_dev is None else {Measure.VOC_DEV: voc_dev}
+    readings.add_if_absent(
+        a_reading(
+            at,
+            device_id=device_id,
+            frame=a_frame(at, seq=seq, state=state, values=values),
+        )
+    )

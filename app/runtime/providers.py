@@ -32,6 +32,7 @@ def telemetry_service_dep(session: SessionDep) -> TelemetryService:
         devices=SqlAlchemyDeviceRepository(session),
         readings=SqlAlchemyReadingRepository(session),
         events=SqlAlchemyEventRepository(session),
+        clock=SystemClock(),
     )
 
 

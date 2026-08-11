@@ -14,7 +14,7 @@ from app.domain.exceptions import DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.ports.frame_source import RawFrame
-from app.domain.value_objects import AlertState, DeviceId
+from app.domain.value_objects import AlertState, DeviceId, Period
 from app.infrastructure.clock import SystemClock
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
@@ -148,8 +148,8 @@ class TestTransition:
         assert outcome.alert is not None
         assert outcome.alert.to_state is AlertState.ALARM
         assert outcome.needs_dispatch is True
-        events = SqlAlchemyEventRepository(session).list_since(
-            registered.key, since=now - timedelta(hours=1), limit=10
+        events = SqlAlchemyEventRepository(session).list_in_period(
+            registered.key, Period(now - timedelta(hours=1), now + timedelta(hours=1)), limit=10
         )
         assert events[0].description == "정상 → 경보 전환"
 

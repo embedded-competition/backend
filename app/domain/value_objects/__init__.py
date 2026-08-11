@@ -5,6 +5,8 @@ from app.domain.value_objects.channel_reading import ChannelReading
 from app.domain.value_objects.device_id import DeviceId
 from app.domain.value_objects.event_kind import EventKind
 from app.domain.value_objects.gas_channel import GasChannel
+from app.domain.value_objects.interval import Interval
+from app.domain.value_objects.period import Period
 from app.domain.value_objects.signature_flags import SignatureFlags
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "DeviceId",
     "EventKind",
     "GasChannel",
+    "Interval",
+    "Period",
     "SignatureFlags",
 ]

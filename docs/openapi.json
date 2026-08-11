@@ -187,12 +187,87 @@
         }
       }
     },
+    "/devices/{device_id}/telemetry/summary": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "기간 요약 (메인 화면)",
+        "description": "구간이 현재를 포함하면 `range.live=true`이고 `current`에 실시간 값이 담긴다. 지난 구간이면 `current`는 null이고 `peaks`의 기간 중 최고치를 쓴다.",
+        "operationId": "telemetry_summary_devices__device_id__telemetry_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "POST /devices가 발급한 식별자",
+              "title": "Device Id"
+            },
+            "description": "POST /devices가 발급한 식별자"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 시작 (UTC, 포함)",
+              "title": "From"
+            },
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 끝 (UTC, 미포함)",
+              "title": "To"
+            },
+            "description": "조회 끝 (UTC, 미포함)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/devices/{device_id}/telemetry/history": {
       "get": {
         "tags": [
           "telemetry"
         ],
-        "summary": "날짜별 시간당 집계 (통계 탭)",
+        "summary": "기간·눈금별 집계 (상세 화면 차트)",
+        "description": "각 칸의 값은 평균이 아니라 최고치다 — 평균은 스파이크를 지우고 지워진 스파이크가 곧 놓친 경보다.",
         "operationId": "telemetry_history_devices__device_id__telemetry_history_get",
         "security": [
           {
@@ -212,16 +287,42 @@
             "description": "POST /devices가 발급한 식별자"
           },
           {
-            "name": "date",
+            "name": "from",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "format": "date",
-              "description": "조회 날짜 (UTC 기준)",
-              "title": "Date"
+              "format": "date-time",
+              "description": "조회 시작 (UTC, 포함)",
+              "title": "From"
             },
-            "description": "조회 날짜 (UTC 기준)"
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 끝 (UTC, 미포함)",
+              "title": "To"
+            },
+            "description": "조회 끝 (UTC, 미포함)"
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "집계 눈금",
+              "examples": [
+                "2h"
+              ],
+              "title": "Interval"
+            },
+            "description": "집계 눈금"
           }
         ],
         "responses": {
@@ -279,10 +380,22 @@
             "schema": {
               "type": "string",
               "format": "date-time",
-              "description": "이 시각 이후 이벤트 (UTC)",
+              "description": "이 시각 이후 이벤트 (UTC, 포함)",
               "title": "Since"
             },
-            "description": "이 시각 이후 이벤트 (UTC)"
+            "description": "이 시각 이후 이벤트 (UTC, 포함)"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "이 시각 이전 이벤트 (UTC, 미포함)",
+              "title": "Until"
+            },
+            "description": "이 시각 이전 이벤트 (UTC, 미포함)"
           }
         ],
         "responses": {
@@ -473,6 +586,133 @@
         ],
         "title": "AlertState"
       },
+      "BucketResponse": {
+        "properties": {
+          "gas": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "h2": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "co": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "tempC": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tempc",
+            "examples": [
+              26.1
+            ]
+          },
+          "rh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rh",
+            "examples": [
+              43.4
+            ]
+          },
+          "presDev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presdev"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start",
+            "description": "눈금 구간의 시작 시각 (UTC, 끝은 미포함)"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState",
+            "description": "이 구간에서 가장 심각했던 상태"
+          },
+          "samples": {
+            "type": "integer",
+            "title": "Samples",
+            "description": "이 구간에 들어온 프레임 수",
+            "examples": [
+              24
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "gas",
+          "h2",
+          "co",
+          "start",
+          "state",
+          "samples"
+        ],
+        "title": "BucketResponse"
+      },
+      "ChannelPeakResponse": {
+        "properties": {
+          "devZ": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Devz",
+            "description": "기간 중 최고 편차. baseline 대비 z-score",
+            "examples": [
+              8.1
+            ]
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope",
+            "description": "기간 중 최고 변화율 (z/min)"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "최고치를 찍은 시각 (UTC)"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState",
+            "description": "그 시각의 상태"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "state"
+        ],
+        "title": "ChannelPeakResponse"
+      },
       "ComponentHealth": {
         "properties": {
           "status": {
@@ -509,6 +749,76 @@
           "disabled"
         ],
         "title": "ComponentStatus"
+      },
+      "CurrentResponse": {
+        "properties": {
+          "gas": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "h2": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "co": {
+            "$ref": "#/components/schemas/GasChannelResponse"
+          },
+          "tempC": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tempc",
+            "examples": [
+              26.1
+            ]
+          },
+          "rh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rh",
+            "examples": [
+              43.4
+            ]
+          },
+          "presDev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presdev"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "measuredAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Measuredat",
+            "description": "노드가 측정한 시각 (UTC)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gas",
+          "h2",
+          "co",
+          "state",
+          "measuredAt"
+        ],
+        "title": "CurrentResponse"
       },
       "DeviceRegisterRequest": {
         "properties": {
@@ -808,44 +1118,62 @@
         ],
         "title": "HealthResponse"
       },
-      "HistoryEventResponse": {
+      "HistoryRangeResponse": {
         "properties": {
-          "time": {
+          "from": {
             "type": "string",
-            "title": "Time",
+            "format": "date-time",
+            "title": "From",
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To",
+            "description": "조회 끝 (UTC, 미포함)"
+          },
+          "interval": {
+            "type": "string",
+            "title": "Interval",
+            "description": "집계 눈금",
             "examples": [
-              "14:32"
+              "2h"
             ]
           },
-          "description": {
-            "type": "string",
-            "title": "Description"
+          "bucketCount": {
+            "type": "integer",
+            "title": "Bucketcount",
+            "description": "이 구간을 눈금으로 잘랐을 때 나오는 칸 수. buckets는 데이터가 있는 칸만 담으므로 이 값보다 짧을 수 있다 — 차이가 곧 관측 공백이다",
+            "examples": [
+              84
+            ]
           }
         },
         "type": "object",
         "required": [
-          "time",
-          "description"
+          "from",
+          "to",
+          "interval",
+          "bucketCount"
         ],
-        "title": "HistoryEventResponse"
+        "title": "HistoryRangeResponse"
       },
       "HistoryResponse": {
         "properties": {
-          "date": {
-            "type": "string",
-            "format": "date",
-            "title": "Date"
+          "range": {
+            "$ref": "#/components/schemas/HistoryRangeResponse"
           },
-          "samples": {
+          "buckets": {
             "items": {
-              "$ref": "#/components/schemas/HourlySampleResponse"
+              "$ref": "#/components/schemas/BucketResponse"
             },
             "type": "array",
-            "title": "Samples"
+            "title": "Buckets",
+            "description": "데이터가 있는 눈금 칸만. 값은 평균이 아니라 그 칸의 최고치"
           },
           "events": {
             "items": {
-              "$ref": "#/components/schemas/HistoryEventResponse"
+              "$ref": "#/components/schemas/EventResponse"
             },
             "type": "array",
             "title": "Events"
@@ -853,76 +1181,11 @@
         },
         "type": "object",
         "required": [
-          "date",
-          "samples",
+          "range",
+          "buckets",
           "events"
         ],
         "title": "HistoryResponse"
-      },
-      "HourlySampleResponse": {
-        "properties": {
-          "hour": {
-            "type": "string",
-            "title": "Hour",
-            "examples": [
-              "14:00"
-            ]
-          },
-          "state": {
-            "$ref": "#/components/schemas/AlertState"
-          },
-          "gas": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "h2": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "co": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "tempC": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tempc"
-          },
-          "rh": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rh"
-          },
-          "presDev": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Presdev"
-          }
-        },
-        "type": "object",
-        "required": [
-          "hour",
-          "state",
-          "gas",
-          "h2",
-          "co"
-        ],
-        "title": "HourlySampleResponse"
       },
       "LocationResponse": {
         "properties": {
@@ -1028,6 +1291,42 @@
         "type": "object",
         "title": "ModuleResponse"
       },
+      "PeaksResponse": {
+        "properties": {
+          "gas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelPeakResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "h2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelPeakResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "co": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelPeakResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PeaksResponse"
+      },
       "PressureResponse": {
         "properties": {
           "presDev": {
@@ -1119,6 +1418,76 @@
           "holdS"
         ],
         "title": "SignatureResponse"
+      },
+      "SummaryRangeResponse": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From",
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To",
+            "description": "조회 끝 (UTC, 미포함)"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live",
+            "description": "구간이 현재를 포함하는지. true면 current가 채워지고 화면은 실시간 값을, false면 current가 null이고 화면은 peaks(기간 중 최고치)를 쓴다"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "live"
+        ],
+        "title": "SummaryRangeResponse"
+      },
+      "SummaryResponse": {
+        "properties": {
+          "range": {
+            "$ref": "#/components/schemas/SummaryRangeResponse"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AlertState",
+            "description": "기간 중 가장 심각했던 상태"
+          },
+          "peaks": {
+            "$ref": "#/components/schemas/PeaksResponse",
+            "description": "채널별 기간 중 최고치와 그 시각"
+          },
+          "eventCount": {
+            "type": "integer",
+            "title": "Eventcount",
+            "description": "기간 중 기록 수",
+            "examples": [
+              3
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "range.live가 true일 때만 채워진다"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "state",
+          "peaks",
+          "eventCount"
+        ],
+        "title": "SummaryResponse"
       },
       "TelemetryResponse": {
         "properties": {

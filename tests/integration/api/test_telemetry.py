@@ -76,29 +76,148 @@ class TestLatest:
 
 
 class TestHistory:
-    async def test_aggregates_by_hour(
+    async def test_buckets_by_requested_interval(
         self, device: RegisteredDevice, session: Session, device_id: int
     ) -> None:
-        readings = SqlAlchemyReadingRepository(session)
-        base = datetime(2026, 8, 8, 14, 0, tzinfo=UTC)
-        for index, state in enumerate([AlertState.NORMAL, AlertState.WATCH]):
-            at = base + timedelta(minutes=5 * index)
-            readings.add_if_absent(
-                a_reading(
-                    at,
-                    device_id=device_id,
-                    frame=a_frame(
-                        at, seq=index, state=state, values={Measure.VOC_DEV: float(index)}
-                    ),
-                )
+        base = datetime(2026, 8, 4, tzinfo=UTC)
+        _store(session, device_id, base + timedelta(hours=1), seq=1, voc_dev=1.0)
+        _store(
+            session,
+            device_id,
+            base + timedelta(hours=3),
+            seq=2,
+            voc_dev=8.0,
+            state=AlertState.WATCH,
+        )
+
+        payload = (
+            await device.get(
+                "telemetry/history",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(hours=4)).isoformat(),
+                    "interval": "2h",
+                },
             )
-        session.commit()
+        ).json()
 
-        payload = (await device.get("telemetry/history", params={"date": "2026-08-08"})).json()
+        assert payload["range"]["interval"] == "2h"
+        assert payload["range"]["bucketCount"] == 2
+        assert [b["start"] for b in payload["buckets"]] == [
+            base.isoformat().replace("+00:00", "Z"),
+            (base + timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+        ]
+        assert payload["buckets"][1]["state"] == "WATCH"
+        assert payload["buckets"][1]["gas"]["devZ"] == pytest.approx(8.0)
 
-        assert len(payload["samples"]) == 1
-        sample = payload["samples"][0]
-        assert sample["hour"] == "14:00"
-        # 한 시간 안 최악값을 쓴다 — 평균 내면 경보가 묻힌다
-        assert sample["state"] == "WATCH"
-        assert sample["gas"]["devZ"] == pytest.approx(0.5)
+    async def test_bad_interval_is_rejected(self, device: RegisteredDevice, now: datetime) -> None:
+        response = await device.get(
+            "telemetry/history",
+            params={
+                "from": now.isoformat(),
+                "to": (now + timedelta(hours=1)).isoformat(),
+                "interval": "2주",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"] == "invalid_interval"
+
+    async def test_too_many_buckets_is_rejected(
+        self, device: RegisteredDevice, now: datetime
+    ) -> None:
+        response = await device.get(
+            "telemetry/history",
+            params={
+                "from": now.isoformat(),
+                "to": (now + timedelta(days=90)).isoformat(),
+                "interval": "1m",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"] == "invalid_interval"
+
+
+class TestSummary:
+    async def test_past_period_reports_peaks_without_current(
+        self, device: RegisteredDevice, session: Session, device_id: int
+    ) -> None:
+        """지난 구간은 실시간 값이 없다 — 화면은 기간 중 최고치를 쓴다."""
+        base = datetime(2020, 5, 1, tzinfo=UTC)
+        peak_at = base + timedelta(hours=2)
+        _store(session, device_id, base, seq=1, voc_dev=1.0)
+        _store(session, device_id, peak_at, seq=2, voc_dev=8.1, state=AlertState.WATCH)
+
+        payload = (
+            await device.get(
+                "telemetry/summary",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(days=1)).isoformat(),
+                },
+            )
+        ).json()
+
+        assert payload["range"]["live"] is False
+        assert payload["current"] is None
+        assert payload["state"] == "WATCH"
+        assert payload["peaks"]["gas"]["devZ"] == pytest.approx(8.1)
+        assert payload["peaks"]["gas"]["at"] == peak_at.isoformat().replace("+00:00", "Z")
+        assert payload["peaks"]["co"] is None
+
+    async def test_period_covering_now_reports_current(
+        self, device: RegisteredDevice, session: Session, device_id: int
+    ) -> None:
+        now = datetime.now(UTC)
+        _store(session, device_id, now - timedelta(minutes=1), seq=1, voc_dev=2.0)
+
+        payload = (
+            await device.get(
+                "telemetry/summary",
+                params={
+                    "from": (now - timedelta(hours=1)).isoformat(),
+                    "to": (now + timedelta(hours=1)).isoformat(),
+                },
+            )
+        ).json()
+
+        assert payload["range"]["live"] is True
+        assert payload["current"] is not None
+        assert payload["current"]["gas"]["devZ"] == pytest.approx(2.0)
+
+    async def test_empty_period_falls_back_to_last_known_state(
+        self, device: RegisteredDevice, now: datetime
+    ) -> None:
+        payload = (
+            await device.get(
+                "telemetry/summary",
+                params={
+                    "from": (now - timedelta(days=2)).isoformat(),
+                    "to": (now - timedelta(days=1)).isoformat(),
+                },
+            )
+        ).json()
+
+        assert payload["state"] == "WARMUP"
+        assert payload["peaks"]["gas"] is None
+        assert payload["eventCount"] == 0
+
+
+def _store(
+    session: Session,
+    device_id: int,
+    at: datetime,
+    *,
+    seq: int,
+    voc_dev: float,
+    state: AlertState = AlertState.NORMAL,
+) -> None:
+    SqlAlchemyReadingRepository(session).add_if_absent(
+        a_reading(
+            at,
+            device_id=device_id,
+            frame=a_frame(at, seq=seq, state=state, values={Measure.VOC_DEV: voc_dev}),
+        )
+    )
+    session.commit()

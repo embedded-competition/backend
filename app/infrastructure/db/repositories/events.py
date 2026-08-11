@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.domain.alerting import Event
-from app.domain.value_objects import EventKind
+from app.domain.value_objects import EventKind, Period
 from app.infrastructure.db.orm import EventOrm
 
 
@@ -21,29 +21,30 @@ class SqlAlchemyEventRepository:
         self.session.flush()
         return _to_domain(row)
 
-    def list_since(self, device_id: int, *, since: datetime, limit: int) -> list[Event]:
+    def list_in_period(self, device_id: int, period: Period, *, limit: int) -> list[Event]:
         rows = self.session.scalars(
             select(EventOrm)
-            .where(EventOrm.device_id == device_id, EventOrm.occurred_at >= since)
+            .where(*_within(device_id, period))
             .order_by(EventOrm.occurred_at.desc())
             .limit(limit)
         )
         return [_to_domain(row) for row in rows]
 
-    def list_in_range(
-        self, device_id: int, *, start: datetime, end: datetime, limit: int
-    ) -> list[Event]:
-        rows = self.session.scalars(
-            select(EventOrm)
-            .where(
-                EventOrm.device_id == device_id,
-                EventOrm.occurred_at >= start,
-                EventOrm.occurred_at <= end,
+    def count_in_period(self, device_id: int, period: Period) -> int:
+        return (
+            self.session.scalar(
+                select(func.count()).select_from(EventOrm).where(*_within(device_id, period))
             )
-            .order_by(EventOrm.occurred_at)
-            .limit(limit)
+            or 0
         )
-        return [_to_domain(row) for row in rows]
+
+
+def _within(device_id: int, period: Period) -> tuple[ColumnElement[bool], ...]:
+    return (
+        EventOrm.device_id == device_id,
+        EventOrm.occurred_at >= period.start,
+        EventOrm.occurred_at < period.end,
+    )
 
 
 def _to_domain(row: EventOrm) -> Event:

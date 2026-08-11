@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Integer, case, cast, func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.domain.frames import Coordinates, TelemetryFrame
-from app.domain.measurements import Measure
-from app.domain.readings import RadioQuality, Reading
-from app.domain.value_objects import AlertState, SignatureFlags
+from app.domain.measurements import Aspect, Measure, channel_measures
+from app.domain.readings import Bucket, ChannelPeak, RadioQuality, Reading
+from app.domain.value_objects import AlertState, GasChannel, Interval, Period, SignatureFlags
 from app.infrastructure.db.orm import ReadingOrm
+
+_EPOCH_FORMAT = "%s"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,25 +35,60 @@ class SqlAlchemyReadingRepository:
             return None
         return replace(reading, id=stored_id)
 
-    def list_in_range(
-        self,
-        device_id: int,
-        *,
-        start: datetime,
-        end: datetime,
-        limit: int,
-    ) -> list[Reading]:
-        rows = self.session.scalars(
-            select(ReadingOrm)
-            .where(
-                ReadingOrm.device_id == device_id,
-                ReadingOrm.measured_at >= start,
-                ReadingOrm.measured_at <= end,
+    def bucket_maxima(self, device_id: int, period: Period, interval: Interval) -> list[Bucket]:
+        index = _bucket_index(period, interval)
+        rows = self.session.execute(
+            select(
+                index.label("bucket"),
+                func.count().label("samples"),
+                _severity_of_row().label("severity"),
+                *(func.max(_column_of(measure)).label(measure.value) for measure in Measure),
             )
-            .order_by(ReadingOrm.measured_at.desc())
-            .limit(limit)
+            .where(*_within(device_id, period))
+            .group_by(index)
+            .order_by(index)
+        ).all()
+        return [
+            Bucket(
+                start=period.bucket_start(row.bucket, interval),
+                state=AlertState.of_severity(row.severity),
+                samples=row.samples,
+                values=_maxima_of(row),
+            )
+            for row in rows
+        ]
+
+    def channel_peak(
+        self, device_id: int, period: Period, channel: GasChannel
+    ) -> ChannelPeak | None:
+        slots = channel_measures(channel)
+        deviation = _column_of(slots[Aspect.DEVIATION])
+        row = self.session.execute(
+            select(
+                ReadingOrm.measured_at,
+                ReadingOrm.state,
+                deviation.label("deviation"),
+                _column_of(slots[Aspect.SLOPE]).label("slope"),
+            )
+            .where(*_within(device_id, period), deviation.is_not(None))
+            .order_by(deviation.desc())
+            .limit(1)
+        ).one_or_none()
+        if row is None:
+            return None
+        return ChannelPeak(
+            channel=channel,
+            at=row.measured_at,
+            state=AlertState(row.state),
+            deviation=row.deviation,
+            slope=row.slope,
         )
-        return [_to_domain(row) for row in rows]
+
+    def worst_state(self, device_id: int, period: Period) -> AlertState | None:
+        severity = self.session.scalar(
+            select(_severity_of_row()).where(*_within(device_id, period))
+        )
+        return None if severity is None else AlertState.of_severity(severity)
 
     def latest(self, device_id: int) -> Reading | None:
         row = self.session.scalar(
@@ -60,6 +98,39 @@ class SqlAlchemyReadingRepository:
             .limit(1)
         )
         return _to_domain(row) if row else None
+
+
+def _column_of(measure: Measure) -> ColumnElement[float | None]:
+    column: ColumnElement[float | None] = getattr(ReadingOrm, measure.value)
+    return column
+
+
+def _within(device_id: int, period: Period) -> tuple[ColumnElement[bool], ...]:
+    return (
+        ReadingOrm.device_id == device_id,
+        ReadingOrm.measured_at >= period.start,
+        ReadingOrm.measured_at < period.end,
+    )
+
+
+def _bucket_index(period: Period, interval: Interval) -> ColumnElement[int]:
+    epoch = cast(func.strftime(_EPOCH_FORMAT, ReadingOrm.measured_at), Integer)
+    start_epoch = int(period.start.timestamp())
+    return cast((epoch - start_epoch) / interval.seconds, Integer)
+
+
+def _severity_of_row() -> ColumnElement[int]:
+    return func.max(
+        case(
+            *((ReadingOrm.state == state.value, state.severity) for state in AlertState),
+            else_=AlertState.WARMUP.severity,
+        )
+    )
+
+
+def _maxima_of(row: Any) -> dict[Measure, float]:
+    found = ((measure, getattr(row, measure.value)) for measure in Measure)
+    return {measure: value for measure, value in found if value is not None}
 
 
 def _to_domain(row: ReadingOrm) -> Reading:

@@ -11,7 +11,9 @@ from app.domain.exceptions import (
     DeviceNotRegistered,
     DomainError,
     FrameError,
+    InvalidInterval,
     InvalidMac,
+    InvalidPeriod,
     ReleaseNotAllowed,
     Unauthorized,
 )
@@ -26,6 +28,8 @@ _STATUS_BY_EXCEPTION: tuple[tuple[type[DomainError], int], ...] = (
     (ReleaseNotAllowed, status.HTTP_403_FORBIDDEN),
     (DeviceNotRegistered, status.HTTP_403_FORBIDDEN),
     (InvalidMac, status.HTTP_422_UNPROCESSABLE_CONTENT),
+    (InvalidPeriod, status.HTTP_422_UNPROCESSABLE_CONTENT),
+    (InvalidInterval, status.HTTP_422_UNPROCESSABLE_CONTENT),
     (FrameError, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 

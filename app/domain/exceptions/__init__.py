@@ -11,7 +11,9 @@ from app.domain.exceptions.frame_crc_error import FrameCrcError
 from app.domain.exceptions.frame_error import FrameError
 from app.domain.exceptions.frame_field_error import FrameFieldError
 from app.domain.exceptions.frame_too_short import FrameTooShort
+from app.domain.exceptions.invalid_interval import InvalidInterval
 from app.domain.exceptions.invalid_mac import InvalidMac
+from app.domain.exceptions.invalid_period import InvalidPeriod
 from app.domain.exceptions.release_not_allowed import ReleaseNotAllowed
 from app.domain.exceptions.unauthorized import Unauthorized
 from app.domain.exceptions.unsupported_frame_version import UnsupportedFrameVersion
@@ -28,7 +30,9 @@ __all__ = [
     "FrameError",
     "FrameFieldError",
     "FrameTooShort",
+    "InvalidInterval",
     "InvalidMac",
+    "InvalidPeriod",
     "ReleaseNotAllowed",
     "Unauthorized",
     "UnsupportedFrameVersion",
