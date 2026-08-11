@@ -23,22 +23,30 @@
 
 | 항목 | 기존 서버 컨벤션 | 확정 |
 |---|---|---|
-| 경로 | `/api/v1/devices` | `/devices/{deviceId}/...` (버전 prefix 없음) |
+| 경로 | `/api/v1/devices` | `/devices/{mac}/...` (버전 prefix 없음, A2에서 개정) |
 | 에러 바디 | `{code, message, request_id, detail}` | `{"error": "device_not_found"}` |
 | 필드 명명 | snake_case | **camelCase** (`devZ`, `battMv`, `lastSeen`) |
 | 성공 바디 | 래핑 | 리소스 그대로 |
 
 에러 바디에 `request_id`를 추가로 넣는다 — 앱은 `error` 키만 읽으면 되므로 호환이 깨지지 않고, 서버 로그 대조에 필요하다.
 
-### A2. deviceToken 인증 도입
+### A2. deviceToken 인증 도입 → **철회. MAC 직접 주소화** 🔴
 
-`security.md`에 "미도입 부채"로 적어둔 항목을 해소한다.
+한 번 구현했다가 앱 팀 요구로 되돌렸다. 이 항목은 기록으로 남긴다 — 되돌린 결정을
+지우면 왜 지금 인증이 없는지 다음 사람이 알 수 없다.
 
-- `POST /devices`가 MAC 등록과 함께 토큰 발급
-- 이후 모든 요청에 `Authorization: Bearer <deviceToken>`
-- 만료 없음, 재등록 시 새 토큰 발급하되 기존 토큰 무효화 안 함 (앱 spec §인증, O4 단일기기 전제)
-- 서버는 **토큰 원문을 저장하지 않는다** — SHA-256 해시만 보관. 유출 시 피해 범위를 줄인다
-- 기기당 토큰 여러 개를 허용하므로 별도 테이블(`access_tokens`)
+**확정**: `deviceId`도 `deviceToken`도 없다. **MAC이 곧 식별자이자 유일한 키**다.
+
+- `POST /devices` 삭제. 기기는 **첫 프레임이 만든다**
+- 모든 경로가 `/devices/{mac}/...`. `AA:BB:CC:DD:EE:FF`와 `aabbccddeeff` 둘 다 받는다
+- `Authorization` 헤더 없음
+- 없는 MAC은 404 `device_not_found`
+
+**대가**: MAC을 아는 사람은 누구나 그 킥보드의 센서·위치를 읽고 경보를 해제할 수 있다.
+사용자가 트레이드오프를 보고 고른 결정이다. 앱 플로우가 짧아지는 것이 이유다.
+
+`access_tokens` 테이블과 `devices.public_id` 컬럼은 **남긴다** — 마이그레이션이
+forward-only Expand-Contract라 쓰기를 멈추는 것까지가 이번 범위다.
 
 ### A3. Expo Push로 전환
 
@@ -143,8 +151,9 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 | 항목 | 상태 |
 |---|---|
 | A1 URL·에러·camelCase | ✅ 구현 완료 |
-| A2 deviceToken | ✅ 구현 완료 (해시 저장, 404 은닉 포함) |
+| A2 deviceToken | ❌ **철회** — MAC 직접 주소화로 대체. 인증 없음 |
 | A3 Expo Push / push_tokens rename | ✅ 구현 완료 (자격증명 없으면 LoggingPushSender) |
 | A4 events.description | ✅ 구현 완료 (`core/descriptions.py`) |
+| A5 응답 평탄화 | ✅ 구현 완료 — `range`·`peaks`·`current` 포장 제거, `devZ`→`value`, 클라 계산 가능 필드 제거 |
 | B1~B3 | **앱 팀 회신 대기** — 회신 전까지 서버는 노드 판정 전제로 진행 |
 | C1~C2 | **임베디드 팀 조정 대기** — 서버는 nullable로 받아 영향 차단 |

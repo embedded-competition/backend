@@ -32,13 +32,12 @@ class Period:
     def includes(self, moment: datetime) -> bool:
         return self.start <= require_aware(moment, "moment") < self.end
 
-    def bucket_count(self, interval: Interval) -> int:
+    def require_supported(self, interval: Interval) -> None:
         count = -(-int(self.span.total_seconds()) // interval.seconds)
         if count > _MAXIMUM_BUCKETS:
             raise InvalidInterval(
                 f"버킷이 너무 많다: {count}개 (상한 {_MAXIMUM_BUCKETS}). 눈금을 키워라"
             )
-        return count
 
     def bucket_start(self, index: int, interval: Interval) -> datetime:
         return self.start + interval.delta * index

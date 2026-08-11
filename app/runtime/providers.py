@@ -8,28 +8,24 @@ from app.core.alert_service import AlertService
 from app.core.device_service import DeviceService
 from app.core.telemetry_service import TelemetryService
 from app.infrastructure.clock import SystemClock
-from app.infrastructure.db.repositories.access_tokens import SqlAlchemyAccessTokenRepository
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
-from app.runtime.deps import SessionDep, SettingsDep
+from app.runtime.deps import SessionDep
 
 
-def device_service_dep(session: SessionDep, settings: SettingsDep) -> DeviceService:
+def device_service_dep(session: SessionDep) -> DeviceService:
     return DeviceService(
         devices=SqlAlchemyDeviceRepository(session),
-        access_tokens=SqlAlchemyAccessTokenRepository(session),
         push_tokens=SqlAlchemyPushTokenRepository(session),
         clock=SystemClock(),
-        default_management_phone=settings.management_phone,
     )
 
 
 def telemetry_service_dep(session: SessionDep) -> TelemetryService:
     return TelemetryService(
-        devices=SqlAlchemyDeviceRepository(session),
         readings=SqlAlchemyReadingRepository(session),
         events=SqlAlchemyEventRepository(session),
         clock=SystemClock(),

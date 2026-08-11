@@ -10,77 +10,48 @@ from sqlalchemy.orm import Session
 from app.core.telemetry_service import _EVENT_LIMIT
 from app.domain.frames import Coordinates
 from app.domain.measurements import Measure
-from app.domain.readings import RadioQuality
-from app.domain.value_objects import AlertState, SignatureFlags
+from app.domain.value_objects import AlertState
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from tests.builders import a_frame, a_reading, an_event
-from tests.integration.api.client import RegisteredDevice
+from tests.integration.api.client import MANAGEMENT_PHONE, UNKNOWN_MAC, SeededDevice
 
 
-class TestLatest:
-    async def test_before_any_frame(self, device: RegisteredDevice) -> None:
-        """프레임을 한 번도 못 받았어도 상태를 지어내지 않는다."""
-        response = await device.get("telemetry/latest")
-
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["state"] == "WARMUP"
-        assert payload["module"]["lastSeen"] is None
-
-    async def test_returns_camel_case_contract(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+class TestMacAddressing:
+    async def test_separators_do_not_matter(
+        self, device: SeededDevice, client_period: dict[str, str]
     ) -> None:
-        SqlAlchemyReadingRepository(session).add_if_absent(
-            a_reading(
-                now,
-                device_id=device_id,
-                radio=RadioQuality(rssi=-74),
-                frame=a_frame(
-                    now,
-                    seq=7,
-                    state=AlertState.WATCH,
-                    values={
-                        Measure.VOC_DEV: 3.1,
-                        Measure.VOC_SLOPE: 2.4,
-                        Measure.TEMP_C: 24.5,
-                        Measure.HUMIDITY_PCT: 41.0,
-                    },
-                    signature=SignatureFlags(rise=True, hold=False, no_recover=True, hold_s=18),
-                    batt_mv=3960,
-                    location=Coordinates(lat=37.5573, lon=127.0329),
-                ),
-            )
+        """앱이 라벨을 어떻게 읽어 오든 같은 기기를 가리켜야 한다."""
+        bare = await device.client.get(
+            "/devices/aabbccddeeff/telemetry/summary", params=client_period
         )
-        session.commit()
 
-        payload = (await device.get("telemetry/latest")).json()
+        assert bare.status_code == 200
 
-        assert payload["state"] == "WATCH"
-        assert payload["gas"] == {"devZ": 3.1, "slope": 2.4}
-        assert payload["signature"]["noRecover"] is True
-        assert payload["signature"]["holdS"] == 18
-        assert payload["location"] == {"lat": 37.5573, "lon": 127.0329}
-        assert payload["module"]["battMv"] == 3960
-        assert payload["module"]["rssi"] == -74
-
-    async def test_raw_sensor_fields_are_absent(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+    async def test_unknown_mac_is_404(
+        self, device: SeededDevice, client_period: dict[str, str]
     ) -> None:
-        """raw는 서버가 채울 수 없다 (정합화 B2). 0으로 채워 내보내지 않는다."""
-        SqlAlchemyReadingRepository(session).add_if_absent(a_reading(now, device_id=device_id))
-        session.commit()
+        response = await device.client.get(
+            f"/devices/{UNKNOWN_MAC}/telemetry/summary", params=client_period
+        )
 
-        payload = (await device.get("telemetry/latest")).json()
+        assert response.status_code == 404
+        assert response.json()["error"] == "device_not_found"
 
-        assert "sraw" not in payload["gas"]
-        assert "mv" not in payload["h2"]
+    async def test_malformed_mac_is_422(
+        self, device: SeededDevice, client_period: dict[str, str]
+    ) -> None:
+        response = await device.client.get(
+            "/devices/not-a-mac-addr/telemetry/summary", params=client_period
+        )
+
+        assert response.status_code == 422
 
 
 class TestHistory:
     async def test_buckets_by_requested_interval(
-        self, device: RegisteredDevice, session: Session, device_id: int
+        self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
         base = datetime(2026, 8, 4, tzinfo=UTC)
         _store(session, device_id, base + timedelta(hours=1), seq=1, voc_dev=1.0)
@@ -104,27 +75,41 @@ class TestHistory:
             )
         ).json()
 
-        assert payload["range"]["interval"] == "2h"
-        assert payload["range"]["bucketCount"] == 2
+        assert payload["interval"] == "2h"
+        assert payload["from"] == base.isoformat().replace("+00:00", "Z")
         assert [b["start"] for b in payload["buckets"]] == [
             base.isoformat().replace("+00:00", "Z"),
             (base + timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
         ]
         assert payload["buckets"][1]["state"] == "WATCH"
-        assert payload["buckets"][1]["gas"]["devZ"] == pytest.approx(8.0)
+        assert payload["buckets"][1]["gas"]["value"] == pytest.approx(8.0)
 
-    async def test_truncated_events_are_countable(
-        self, device: RegisteredDevice, session: Session, device_id: int
+    async def test_bucket_carries_no_timestamp_per_channel(
+        self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
-        """잘린 응답이 완전한 응답처럼 보이면 안 된다.
-
-        events는 상한까지만 담긴다. eventCount가 없으면 받은 쪽은 "기록이 N개"인지
-        "N개까지만 준 것"인지 구별할 수 없다.
-        """
+        """칸의 시각은 start 하나다. 채널마다 되풀이할 이유가 없다."""
         base = datetime(2026, 8, 4, tzinfo=UTC)
-        stored = _EVENT_LIMIT + 5
+        _store(session, device_id, base, seq=1, voc_dev=1.0)
+
+        payload = (
+            await device.get(
+                "telemetry/history",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(hours=2)).isoformat(),
+                    "interval": "1h",
+                },
+            )
+        ).json()
+
+        assert "at" not in payload["buckets"][0]["gas"]
+
+    async def test_events_are_capped(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        base = datetime(2026, 8, 4, tzinfo=UTC)
         events = SqlAlchemyEventRepository(session)
-        for offset in range(stored):
+        for offset in range(_EVENT_LIMIT + 5):
             events.add(an_event(base + timedelta(seconds=offset), device_id=device_id))
         session.commit()
 
@@ -139,11 +124,9 @@ class TestHistory:
             )
         ).json()
 
-        assert payload["eventCount"] == stored
         assert len(payload["events"]) == _EVENT_LIMIT
-        assert len(payload["events"]) < payload["eventCount"]
 
-    async def test_bad_interval_is_rejected(self, device: RegisteredDevice, now: datetime) -> None:
+    async def test_bad_interval_is_rejected(self, device: SeededDevice, now: datetime) -> None:
         response = await device.get(
             "telemetry/history",
             params={
@@ -156,9 +139,7 @@ class TestHistory:
         assert response.status_code == 422
         assert response.json()["error"] == "invalid_interval"
 
-    async def test_too_many_buckets_is_rejected(
-        self, device: RegisteredDevice, now: datetime
-    ) -> None:
+    async def test_too_many_buckets_is_rejected(self, device: SeededDevice, now: datetime) -> None:
         response = await device.get(
             "telemetry/history",
             params={
@@ -173,10 +154,10 @@ class TestHistory:
 
 
 class TestSummary:
-    async def test_past_period_reports_peaks_without_current(
-        self, device: RegisteredDevice, session: Session, device_id: int
+    async def test_past_period_reports_peaks(
+        self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
-        """지난 구간은 실시간 값이 없다 — 화면은 기간 중 최고치를 쓴다."""
+        """지난 구간의 값은 기간 중 최고치이고, at은 그 최고를 찍은 시각이다."""
         base = datetime(2020, 5, 1, tzinfo=UTC)
         peak_at = base + timedelta(hours=2)
         _store(session, device_id, base, seq=1, voc_dev=1.0)
@@ -192,18 +173,20 @@ class TestSummary:
             )
         ).json()
 
-        assert payload["range"]["live"] is False
-        assert payload["current"] is None
+        assert payload["live"] is False
         assert payload["state"] == "WATCH"
-        assert payload["peaks"]["gas"]["devZ"] == pytest.approx(8.1)
-        assert payload["peaks"]["gas"]["at"] == peak_at.isoformat().replace("+00:00", "Z")
-        assert payload["peaks"]["co"] is None
+        assert payload["gas"]["value"] == pytest.approx(8.1)
+        assert payload["gas"]["at"] == peak_at.isoformat().replace("+00:00", "Z")
+        assert payload["co"] is None
+        assert payload["managementPhone"] == MANAGEMENT_PHONE
 
-    async def test_period_covering_now_reports_current(
-        self, device: RegisteredDevice, session: Session, device_id: int
+    async def test_period_covering_now_reports_the_latest_reading(
+        self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
+        """live면 최고치가 아니라 지금 값이다 — 같은 자리에 다른 의미가 담긴다."""
         now = datetime.now(UTC)
-        _store(session, device_id, now - timedelta(minutes=1), seq=1, voc_dev=2.0)
+        _store(session, device_id, now - timedelta(minutes=5), seq=1, voc_dev=9.0)
+        _store(session, device_id, now - timedelta(minutes=1), seq=2, voc_dev=2.0)
 
         payload = (
             await device.get(
@@ -215,19 +198,17 @@ class TestSummary:
             )
         ).json()
 
-        assert payload["range"]["live"] is True
-        assert payload["current"] is not None
-        assert payload["current"]["gas"]["devZ"] == pytest.approx(2.0)
+        assert payload["live"] is True
+        assert payload["gas"]["value"] == pytest.approx(2.0)
 
     async def test_empty_period_reports_no_state(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+        self, device: SeededDevice, session: Session, device_id: int, now: datetime
     ) -> None:
         """관측이 없는 구간은 null이다.
 
         기기의 현재 상태를 과거 구간의 답으로 쓰면, 그 기간에 아무 일도 없었는데도
-        화면이 "이 기간 중 경보 단계까지 갔어요"를 띄운다. 반대로 지금이 정상이면
-        과거의 실제 경보가 정상으로 덮인다. last_state를 ALARM으로 세워 두고
-        검증해야 그 폴백이 되살아나는 것을 잡는다.
+        화면이 "이 기간 중 경보 단계까지 갔어요"를 띄운다. last_state를 ALARM으로
+        세워 두고 검증해야 그 폴백이 되살아나는 것을 잡는다.
         """
         _set_last_state(session, device_id, AlertState.ALARM)
 
@@ -242,11 +223,11 @@ class TestSummary:
         ).json()
 
         assert payload["state"] is None
-        assert payload["peaks"]["gas"] is None
-        assert payload["eventCount"] == 0
+        assert payload["gas"] is None
+        assert payload["at"] is None
 
     async def test_observed_period_reports_worst_state(
-        self, device: RegisteredDevice, session: Session, device_id: int
+        self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
         """관측이 있으면 기기의 현재 상태와 무관하게 구간 중 최악이 나온다."""
         base = datetime(2020, 5, 1, tzinfo=UTC)
@@ -273,6 +254,74 @@ class TestSummary:
 
         assert payload["state"] == "WATCH"
 
+    async def test_pressure_uses_the_same_shape_as_gas(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """앱이 채널 넷을 같은 코드로 그린다."""
+        base = datetime(2020, 5, 1, tzinfo=UTC)
+        _store(session, device_id, base, seq=1, voc_dev=1.0, pressure_dev=2.5)
+
+        payload = (
+            await device.get(
+                "telemetry/summary",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(days=1)).isoformat(),
+                },
+            )
+        ).json()
+
+        assert set(payload["pressure"]) == set(payload["gas"])
+        assert payload["pressure"]["value"] == pytest.approx(2.5)
+
+
+class TestLocation:
+    async def test_returns_the_last_reported_coordinates(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        base = datetime(2026, 8, 4, tzinfo=UTC)
+        _store(session, device_id, base, seq=1, voc_dev=1.0, location=Coordinates(37.5, 127.0))
+        _store(
+            session,
+            device_id,
+            base + timedelta(hours=1),
+            seq=2,
+            voc_dev=1.0,
+            location=Coordinates(37.5573, 127.0329),
+        )
+
+        payload = (await device.get("location")).json()
+
+        assert payload["lat"] == pytest.approx(37.5573)
+        assert payload["lon"] == pytest.approx(127.0329)
+        assert payload["at"] == (base + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+
+    async def test_frames_without_coordinates_are_skipped(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """좌표는 상태 전이 프레임에만 실린다. 최신 프레임이 아니라 최신 좌표를 준다."""
+        base = datetime(2026, 8, 4, tzinfo=UTC)
+        _store(session, device_id, base, seq=1, voc_dev=1.0, location=Coordinates(37.5, 127.0))
+        _store(session, device_id, base + timedelta(hours=1), seq=2, voc_dev=1.0)
+
+        payload = (await device.get("location")).json()
+
+        assert payload["lat"] == pytest.approx(37.5)
+
+    async def test_device_without_any_coordinates_is_404(self, device: SeededDevice) -> None:
+        response = await device.get("location")
+
+        assert response.status_code == 404
+        assert response.json()["error"] == "device_not_found"
+
+
+@pytest.fixture
+def client_period(now: datetime) -> dict[str, str]:
+    return {
+        "from": (now - timedelta(days=1)).isoformat(),
+        "to": now.isoformat(),
+    }
+
 
 def _set_last_state(session: Session, device_id: int, state: AlertState) -> None:
     repository = SqlAlchemyDeviceRepository(session)
@@ -291,12 +340,17 @@ def _store(
     seq: int,
     voc_dev: float,
     state: AlertState = AlertState.NORMAL,
+    pressure_dev: float | None = None,
+    location: Coordinates | None = None,
 ) -> None:
+    values = {Measure.VOC_DEV: voc_dev}
+    if pressure_dev is not None:
+        values[Measure.PRESSURE_DEV] = pressure_dev
     SqlAlchemyReadingRepository(session).add_if_absent(
         a_reading(
             at,
             device_id=device_id,
-            frame=a_frame(at, seq=seq, state=state, values={Measure.VOC_DEV: voc_dev}),
+            frame=a_frame(at, seq=seq, state=state, values=values, location=location),
         )
     )
     session.commit()

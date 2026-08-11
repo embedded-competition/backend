@@ -37,14 +37,18 @@ def session_scope_factory(
     return scope
 
 
-def build_ingest_service(session: Session) -> IngestService:
-    return IngestService(
-        devices=SqlAlchemyDeviceRepository(session),
-        readings=SqlAlchemyReadingRepository(session),
-        alerts=SqlAlchemyAlertRepository(session),
-        events=SqlAlchemyEventRepository(session),
-        clock=SystemClock(),
-    )
+def ingest_factory(settings: Settings) -> Callable[[Session], IngestService]:
+    def build(session: Session) -> IngestService:
+        return IngestService(
+            devices=SqlAlchemyDeviceRepository(session),
+            readings=SqlAlchemyReadingRepository(session),
+            alerts=SqlAlchemyAlertRepository(session),
+            events=SqlAlchemyEventRepository(session),
+            clock=SystemClock(),
+            default_management_phone=settings.management_phone,
+        )
+
+    return build
 
 
 def create_push_sender(settings: Settings) -> PushSender:

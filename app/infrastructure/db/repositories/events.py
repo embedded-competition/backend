@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -29,14 +29,6 @@ class SqlAlchemyEventRepository:
             .limit(limit)
         )
         return [_to_domain(row) for row in rows]
-
-    def count_in_period(self, device_id: int, period: Period) -> int:
-        return (
-            self.session.scalar(
-                select(func.count()).select_from(EventOrm).where(*_within(device_id, period))
-            )
-            or 0
-        )
 
 
 def _within(device_id: int, period: Period) -> tuple[ColumnElement[bool], ...]:

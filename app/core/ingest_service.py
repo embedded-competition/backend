@@ -6,7 +6,7 @@ from app.core import identity
 from app.core.descriptions import describe_transition
 from app.domain.alerting import Alert, Event
 from app.domain.device import Device
-from app.domain.exceptions import DeviceInactive, DeviceNotRegistered
+from app.domain.exceptions import DeviceInactive, FrameFieldError
 from app.domain.frames import TelemetryFrame
 from app.domain.ports.clock import Clock
 from app.domain.ports.frame_source import RawFrame
@@ -38,10 +38,11 @@ class IngestService:
     alerts: SqlAlchemyAlertRepository
     events: SqlAlchemyEventRepository
     clock: Clock
+    default_management_phone: str | None = None
 
     def ingest(self, frame: TelemetryFrame, raw: RawFrame) -> IngestOutcome:
         if frame.hw_id is None:
-            raise DeviceNotRegistered("hw_id 없는 프레임은 소유 기기를 특정할 수 없다")
+            raise FrameFieldError("hw_id 없는 프레임은 소유 기기를 특정할 수 없다")
         device = self._resolve_device(frame.hw_id)
         received = _to_reading(device, frame, raw)
 
@@ -64,16 +65,22 @@ class IngestService:
         )
 
     def _resolve_device(self, hw_id: DeviceId) -> Device:
-        device = self.devices.get_by_hw_id(hw_id)
-        if device is None:
-            device = self.devices.get_by_mac(_mac_from_hw_id(str(hw_id)))
-            if device is None:
-                raise DeviceNotRegistered(f"미등록 노드: {hw_id}")
-            device.hw_id = hw_id
-            device = self.devices.save(device)
+        device = self.devices.get_by_hw_id(hw_id) or self._adopt(hw_id)
         if not device.is_active:
-            raise DeviceInactive(f"비활성 기기: {device.public_id}")
+            raise DeviceInactive(f"비활성 기기: {device.mac}")
         return device
+
+    def _adopt(self, hw_id: DeviceId) -> Device:
+        mac = identity.normalize_mac(str(hw_id))
+        device = self.devices.get_by_mac(mac) or Device(
+            public_id=identity.new_public_id(),
+            mac=mac,
+            label=identity.default_label(mac),
+            management_phone=self.default_management_phone,
+            registered_at=self.clock.now(),
+        )
+        device.hw_id = hw_id
+        return self.devices.save(device)
 
     def _record_transition(
         self, device: Device, frame: TelemetryFrame, reading: Reading
@@ -102,10 +109,6 @@ class IngestService:
             )
         )
         return alert
-
-
-def _mac_from_hw_id(hw_id_hex: str) -> str:
-    return identity.normalize_mac(hw_id_hex)
 
 
 def _to_reading(device: Device, frame: TelemetryFrame, raw: RawFrame) -> Reading:

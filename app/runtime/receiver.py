@@ -12,7 +12,7 @@ from app.core.ingest_service import IngestOutcome, IngestService
 from app.core.notification_service import NotificationService
 from app.domain.alerting import Alert
 from app.domain.device import Device
-from app.domain.exceptions import DeviceInactive, DeviceNotRegistered, FrameError
+from app.domain.exceptions import DeviceInactive, FrameError
 from app.domain.frames import TelemetryFrame
 from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.lora.frame import parse_frame
@@ -67,9 +67,9 @@ class FrameReceiver:
                 extra={"code": exc.code, "payload": raw.payload.hex()},
             )
             return
-        except (DeviceNotRegistered, DeviceInactive) as exc:
+        except DeviceInactive as exc:
             self.stats.unknown_device += 1
-            logger.warning("frame from unknown device", extra={"code": exc.code})
+            logger.warning("frame from inactive device", extra={"code": exc.code})
             return
         except Exception:
             logger.exception("frame handling failed")

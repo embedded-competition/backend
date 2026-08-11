@@ -22,19 +22,9 @@ class SqlAlchemyDeviceRepository:
         row = self.session.scalar(select(DeviceOrm).where(DeviceOrm.mac == mac))
         return _to_domain(row) if row else None
 
-    def get_by_public_id(self, public_id: str) -> Device | None:
-        row = self.session.scalar(select(DeviceOrm).where(DeviceOrm.public_id == public_id))
-        return _to_domain(row) if row else None
-
     def get(self, device_id: int) -> Device | None:
         row = self.session.get(DeviceOrm, device_id)
         return _to_domain(row) if row else None
-
-    def list_active(self) -> list[Device]:
-        rows = self.session.scalars(
-            select(DeviceOrm).where(DeviceOrm.is_active.is_(True)).order_by(DeviceOrm.id)
-        )
-        return [_to_domain(row) for row in rows]
 
     def save(self, device: Device) -> Device:
         row = self.session.get(DeviceOrm, device.id) if device.id else None

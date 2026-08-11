@@ -89,7 +89,7 @@ def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
     return FrameReceiver(
         source=create_frame_source(settings),
         session_scope=wiring.session_scope_factory(state.session_factory),
-        ingest_factory=wiring.build_ingest_service,
+        ingest_factory=wiring.ingest_factory(settings),
         notifier_factory=wiring.notifier_factory(settings, wiring.create_push_sender(settings)),
         parse=create_frame_parser(settings),
         on_frame=remember_last_frame,

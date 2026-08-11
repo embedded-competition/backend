@@ -1,53 +1,58 @@
 """API 테스트용 클라이언트 래퍼.
 
-앱 spec의 인증 요청은 전부 `/devices/{deviceId}/...` + Bearer 형태다. 그 조립을
-매 테스트가 반복하면 URL 규칙이 바뀔 때 전 테스트를 고쳐야 한다.
+모든 경로가 `/devices/{mac}/...`이고 인증은 없다. 그 조립을 매 테스트가 반복하면
+URL 규칙이 바뀔 때 전 테스트를 고쳐야 한다.
+
+기기는 등록 엔드포인트가 아니라 저장소로 심는다 — 등록 경로가 사라졌고, 실제로는
+첫 프레임이 기기를 만든다.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient, Response
 from sqlalchemy.orm import Session
 
+from app.core import identity
+from app.domain.device import Device
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
 
 MAC = "AA:BB:CC:DD:EE:FF"
 OTHER_MAC = "11:22:33:44:55:66"
+UNKNOWN_MAC = "99:99:99:99:99:99"
+MANAGEMENT_PHONE = "01029015899"
 
 
 @dataclass(frozen=True, slots=True)
-class RegisteredDevice:
+class SeededDevice:
     client: AsyncClient
-    public_id: str
-    token: str
-
-    @property
-    def headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"}
+    mac: str
+    key: int
 
     async def get(self, path: str, **kwargs: Any) -> Response:
-        return await self.client.get(self._url(path), headers=self.headers, **kwargs)
+        return await self.client.get(self._url(path), **kwargs)
 
     async def post(self, path: str, **kwargs: Any) -> Response:
-        return await self.client.post(self._url(path), headers=self.headers, **kwargs)
+        return await self.client.post(self._url(path), **kwargs)
 
     def _url(self, path: str) -> str:
-        return f"/devices/{self.public_id}/{path}"
+        return f"/devices/{self.mac}/{path}"
 
 
-async def register(client: AsyncClient, mac: str = MAC) -> RegisteredDevice:
-    response = await client.post("/devices", json={"mac": mac})
-    assert response.status_code == 201, response.text
-    body = response.json()
-    return RegisteredDevice(client=client, public_id=body["deviceId"], token=body["deviceToken"])
-
-
-def row_id(session: Session, device: RegisteredDevice) -> int:
-    """앱에 노출되는 public_id를 내부 FK로 바꾼다 (D8)."""
-    found = SqlAlchemyDeviceRepository(session).get_by_public_id(device.public_id)
-    assert found is not None
-    assert found.id is not None
-    return found.id
+def seed_device(session: Session, client: AsyncClient, mac: str = MAC) -> SeededDevice:
+    normalized = identity.normalize_mac(mac)
+    saved = SqlAlchemyDeviceRepository(session).save(
+        Device(
+            public_id=identity.new_public_id(),
+            mac=normalized,
+            label=identity.default_label(normalized),
+            management_phone=MANAGEMENT_PHONE,
+            registered_at=datetime.now(UTC),
+        )
+    )
+    session.commit()
+    assert saved.id is not None
+    return SeededDevice(client=client, mac=mac, key=saved.id)

@@ -8,12 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from tests.builders import an_event
-from tests.integration.api.client import RegisteredDevice
+from tests.integration.api.client import SeededDevice
 
 
 class TestEventList:
     async def test_returns_events_inside_the_period(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+        self, device: SeededDevice, session: Session, device_id: int, now: datetime
     ) -> None:
         SqlAlchemyEventRepository(session).add(an_event(now, device_id=device_id))
         session.commit()
@@ -33,7 +33,7 @@ class TestEventList:
         assert payload["items"][0]["id"].startswith("evt_")
 
     async def test_event_outside_the_period_is_excluded(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+        self, device: SeededDevice, session: Session, device_id: int, now: datetime
     ) -> None:
         SqlAlchemyEventRepository(session).add(an_event(now, device_id=device_id))
         session.commit()
@@ -50,9 +50,7 @@ class TestEventList:
 
         assert payload["items"] == []
 
-    async def test_backwards_period_is_rejected(
-        self, device: RegisteredDevice, now: datetime
-    ) -> None:
+    async def test_backwards_period_is_rejected(self, device: SeededDevice, now: datetime) -> None:
         response = await device.get(
             "events",
             params={

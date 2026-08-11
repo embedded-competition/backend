@@ -43,16 +43,16 @@ class TestMembership:
 
 
 class TestBuckets:
-    def test_counts_whole_and_partial_slots(self) -> None:
+    def test_accepts_a_tick_that_fits(self) -> None:
         period = Period(NOW, NOW + timedelta(hours=7))
 
-        assert period.bucket_count(Interval.parse("2h")) == 4
+        period.require_supported(Interval.parse("2h"))
 
     def test_rejects_a_tick_that_explodes_the_response(self) -> None:
         period = Period(NOW, NOW + timedelta(days=90))
 
         with pytest.raises(InvalidInterval):
-            period.bucket_count(Interval.parse("1m"))
+            period.require_supported(Interval.parse("1m"))
 
     def test_bucket_start_walks_by_the_tick(self) -> None:
         period = Period(NOW, NOW + timedelta(days=1))

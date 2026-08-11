@@ -10,11 +10,11 @@ from app.domain.value_objects import AlertState, EventKind, Period
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from tests.builders import an_alert
-from tests.integration.api.client import RegisteredDevice
+from tests.integration.api.client import SeededDevice
 
 
 class TestWithoutActiveAlarm:
-    async def test_is_forbidden(self, device: RegisteredDevice) -> None:
+    async def test_is_forbidden(self, device: SeededDevice) -> None:
         response = await device.post("alarm/release", json={})
 
         assert response.status_code == 403
@@ -24,7 +24,7 @@ class TestWithoutActiveAlarm:
 
 class TestWithActiveAlarm:
     async def test_acknowledges_alarm(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+        self, device: SeededDevice, session: Session, device_id: int, now: datetime
     ) -> None:
         alerts = SqlAlchemyAlertRepository(session)
         alerts.add(an_alert(now, device_id=device_id, from_state=AlertState.WATCH))
@@ -37,7 +37,7 @@ class TestWithActiveAlarm:
         assert alerts.list_active_for(device_id) == []
 
     async def test_is_recorded_as_event(
-        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
+        self, device: SeededDevice, session: Session, device_id: int, now: datetime
     ) -> None:
         SqlAlchemyAlertRepository(session).add(an_alert(now, device_id=device_id))
         session.commit()

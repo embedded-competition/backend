@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.domain.frames import Coordinates, TelemetryFrame
-from app.domain.measurements import Aspect, Measure, channel_measures
-from app.domain.readings import Bucket, ChannelPeak, RadioQuality, Reading
-from app.domain.value_objects import AlertState, GasChannel, Interval, Period, SignatureFlags
+from app.domain.measurements import Measure
+from app.domain.readings import Bucket, ChannelPeak, PeriodExtremes, RadioQuality, Reading
+from app.domain.value_objects import AlertState, Interval, Period, SignatureFlags
 from app.infrastructure.db.orm import ReadingOrm
 
 _EPOCH_FORMAT = "%s"
@@ -58,42 +58,61 @@ class SqlAlchemyReadingRepository:
             for row in rows
         ]
 
-    def channel_peak(
-        self, device_id: int, period: Period, channel: GasChannel
+    def measure_peak(
+        self, device_id: int, period: Period, deviation: Measure, slope: Measure
     ) -> ChannelPeak | None:
-        slots = channel_measures(channel)
-        deviation = _column_of(slots[Aspect.DEVIATION])
+        column = _column_of(deviation)
         row = self.session.execute(
             select(
                 ReadingOrm.measured_at,
-                ReadingOrm.state,
-                deviation.label("deviation"),
-                _column_of(slots[Aspect.SLOPE]).label("slope"),
+                column.label("value"),
+                _column_of(slope).label("slope"),
             )
-            .where(*_within(device_id, period), deviation.is_not(None))
-            .order_by(deviation.desc())
+            .where(*_within(device_id, period), column.is_not(None))
+            .order_by(column.desc())
             .limit(1)
         ).one_or_none()
         if row is None:
             return None
-        return ChannelPeak(
-            channel=channel,
-            at=row.measured_at,
-            state=AlertState(row.state),
-            deviation=row.deviation,
-            slope=row.slope,
-        )
+        return ChannelPeak(at=row.measured_at, value=row.value, slope=row.slope)
 
-    def worst_state(self, device_id: int, period: Period) -> AlertState | None:
-        severity = self.session.scalar(
-            select(_severity_of_row()).where(*_within(device_id, period))
+    def period_extremes(self, device_id: int, period: Period) -> PeriodExtremes | None:
+        row = self.session.execute(
+            select(
+                func.max(ReadingOrm.measured_at).label("at"),
+                _severity_of_row().label("severity"),
+                func.max(ReadingOrm.latched).label("latched"),
+                func.max(ReadingOrm.water).label("water"),
+                *(func.max(_column_of(measure)).label(measure.value) for measure in Measure),
+            ).where(*_within(device_id, period))
+        ).one()
+        if row.at is None:
+            return None
+        return PeriodExtremes(
+            at=row.at,
+            state=AlertState.of_severity(row.severity),
+            latched=bool(row.latched),
+            water=bool(row.water),
+            values=_maxima_of(row),
         )
-        return None if severity is None else AlertState.of_severity(severity)
 
     def latest(self, device_id: int) -> Reading | None:
         row = self.session.scalar(
             select(ReadingOrm)
             .where(ReadingOrm.device_id == device_id)
+            .order_by(ReadingOrm.measured_at.desc())
+            .limit(1)
+        )
+        return _to_domain(row) if row else None
+
+    def latest_located(self, device_id: int) -> Reading | None:
+        row = self.session.scalar(
+            select(ReadingOrm)
+            .where(
+                ReadingOrm.device_id == device_id,
+                ReadingOrm.lat.is_not(None),
+                ReadingOrm.lon.is_not(None),
+            )
             .order_by(ReadingOrm.measured_at.desc())
             .limit(1)
         )

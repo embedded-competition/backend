@@ -21,6 +21,13 @@ SPECS: dict[Measure, MeasureSpec] = {
 
 ORDER: tuple[Measure, ...] = tuple(SPECS)
 
+SLOPE_BY_DEVIATION: dict[Measure, Measure] = {
+    Measure.VOC_DEV: Measure.VOC_SLOPE,
+    Measure.H2_DEV: Measure.H2_SLOPE,
+    Measure.CO_DEV: Measure.CO_SLOPE,
+    Measure.PRESSURE_DEV: Measure.PRESSURE_RATE,
+}
+
 
 def channel_measures(channel: GasChannel) -> dict[Aspect, Measure]:
     return {

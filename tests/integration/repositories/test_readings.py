@@ -204,7 +204,6 @@ class TestBucketMaxima:
         buckets = readings.bucket_maxima(device_id, period, Interval.parse("1h"))
 
         assert [b.start for b in buckets] == [now, now + timedelta(hours=3)]
-        assert period.bucket_count(Interval.parse("1h")) == 4
 
     def test_reads_beyond_the_old_two_thousand_row_cap(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
@@ -222,7 +221,7 @@ class TestBucketMaxima:
         assert buckets[0].value(Measure.VOC_DEV) == pytest.approx(7.0)
 
 
-class TestChannelPeak:
+class TestMeasurePeak:
     def test_reports_value_and_when_it_happened(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
     ) -> None:
@@ -231,14 +230,16 @@ class TestChannelPeak:
         _store(readings, device_id, peak_at, seq=2, voc_dev=8.1, state=AlertState.WATCH)
         _store(readings, device_id, now + timedelta(minutes=4), seq=3, voc_dev=0.5)
 
-        peak = readings.channel_peak(
-            device_id, Period(now, now + timedelta(hours=1)), GasChannel.VOC
+        peak = readings.measure_peak(
+            device_id,
+            Period(now, now + timedelta(hours=1)),
+            Measure.VOC_DEV,
+            Measure.VOC_SLOPE,
         )
 
         assert peak is not None
-        assert peak.deviation == pytest.approx(8.1)
+        assert peak.value == pytest.approx(8.1)
         assert peak.at == peak_at
-        assert peak.state is AlertState.WATCH
 
     def test_channel_without_any_value_has_no_peak(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
@@ -246,23 +247,62 @@ class TestChannelPeak:
         _store(readings, device_id, now, seq=1, voc_dev=1.0)
 
         assert (
-            readings.channel_peak(device_id, Period(now, now + timedelta(hours=1)), GasChannel.CO)
+            readings.measure_peak(
+                device_id,
+                Period(now, now + timedelta(hours=1)),
+                Measure.CO_DEV,
+                Measure.CO_SLOPE,
+            )
             is None
         )
 
 
-class TestWorstState:
+class TestPeriodExtremes:
     def test_returns_none_when_period_is_empty(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
     ) -> None:
-        assert readings.worst_state(device_id, Period(now, now + timedelta(hours=1))) is None
+        assert readings.period_extremes(device_id, Period(now, now + timedelta(hours=1))) is None
 
     def test_end_is_excluded(
         self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
     ) -> None:
         _store(readings, device_id, now + timedelta(hours=1), seq=1, state=AlertState.ALARM)
 
-        assert readings.worst_state(device_id, Period(now, now + timedelta(hours=1))) is None
+        assert readings.period_extremes(device_id, Period(now, now + timedelta(hours=1))) is None
+
+    def test_reports_worst_state_and_last_observation(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        last_at = now + timedelta(minutes=5)
+        _store(readings, device_id, now, seq=1, voc_dev=1.0, state=AlertState.ALARM)
+        _store(readings, device_id, last_at, seq=2, voc_dev=2.0, state=AlertState.NORMAL)
+
+        extremes = readings.period_extremes(device_id, Period(now, now + timedelta(hours=1)))
+
+        assert extremes is not None
+        assert extremes.state is AlertState.ALARM
+        assert extremes.at == last_at
+        assert extremes.value(Measure.VOC_DEV) == pytest.approx(2.0)
+
+
+class TestLatestLocated:
+    def test_skips_frames_without_coordinates(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        _store(readings, device_id, now, seq=1, voc_dev=1.0, location=Coordinates(37.5, 127.0))
+        _store(readings, device_id, now + timedelta(minutes=1), seq=2, voc_dev=1.0)
+
+        found = readings.latest_located(device_id)
+
+        assert found is not None
+        assert found.frame.location == Coordinates(37.5, 127.0)
+
+    def test_returns_none_when_no_frame_carried_coordinates(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        _store(readings, device_id, now, seq=1, voc_dev=1.0)
+
+        assert readings.latest_located(device_id) is None
 
 
 def _store(
@@ -273,12 +313,13 @@ def _store(
     seq: int,
     voc_dev: float | None = None,
     state: AlertState = AlertState.NORMAL,
+    location: Coordinates | None = None,
 ) -> None:
     values = {} if voc_dev is None else {Measure.VOC_DEV: voc_dev}
     readings.add_if_absent(
         a_reading(
             at,
             device_id=device_id,
-            frame=a_frame(at, seq=seq, state=state, values=values),
+            frame=a_frame(at, seq=seq, state=state, values=values, location=location),
         )
     )

@@ -1,18 +1,10 @@
-"""식별자·토큰 생성. 앱 등록 경로의 계약이자 인증의 뿌리다."""
+"""식별자 정규화·생성. MAC이 곧 경로이자 식별자라 정규화가 계약의 뿌리다."""
 
 from __future__ import annotations
 
-import hashlib
-
 import pytest
 
-from app.core.identity import (
-    default_label,
-    hash_token,
-    new_device_token,
-    new_public_id,
-    normalize_mac,
-)
+from app.core.identity import default_label, new_public_id, normalize_mac
 from app.domain.exceptions import InvalidMac
 
 _CANONICAL = "AA:BB:CC:DD:EE:FF"
@@ -61,25 +53,7 @@ class TestNormalizeMac:
         assert normalize_mac(normalize_mac(_CANONICAL)) == _CANONICAL
 
 
-class TestHashToken:
-    def test_is_sha256_hex(self) -> None:
-        assert hash_token("dtk_abc") == hashlib.sha256(b"dtk_abc").hexdigest()
-
-    def test_is_deterministic(self) -> None:
-        assert hash_token("dtk_abc") == hash_token("dtk_abc")
-
-    def test_different_tokens_hash_differently(self) -> None:
-        assert hash_token("dtk_abc") != hash_token("dtk_abd")
-
-    def test_does_not_contain_the_original(self) -> None:
-        """원문은 저장되지 않는다 (db-schema.md D9)."""
-        assert "dtk_abc" not in hash_token("dtk_abc")
-
-
 class TestGeneratedIdentifiers:
-    def test_device_token_carries_its_prefix(self) -> None:
-        assert new_device_token().startswith("dtk_")
-
     def test_public_id_carries_its_prefix(self) -> None:
         assert new_public_id().startswith("dev_")
 
@@ -88,12 +62,6 @@ class TestGeneratedIdentifiers:
         generated = {new_public_id() for _ in range(200)}
 
         assert len(generated) == 200
-
-    def test_tokens_are_not_reused(self) -> None:
-        assert len({new_device_token() for _ in range(200)}) == 200
-
-    def test_token_has_enough_entropy_to_resist_guessing(self) -> None:
-        assert len(new_device_token()) > 24
 
 
 class TestDefaultLabel:

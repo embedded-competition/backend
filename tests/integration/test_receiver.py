@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.config import Settings
 from app.core.notification_service import NotificationService
 from app.domain.device import Device
 from app.domain.ports.frame_source import RawFrame
@@ -29,6 +30,10 @@ from tests.fakes.push import RecordingPushSender
 
 HW_ID = "aabbccddeeff"
 MAC = "AA:BB:CC:DD:EE:FF"
+
+
+def _settings() -> Settings:
+    return Settings(environment="local", management_phone="01029015899")
 
 
 @pytest.fixture
@@ -68,7 +73,7 @@ def _receiver(
     return FrameReceiver(
         source=ReplayFrameSource(frames),
         session_scope=wiring.session_scope_factory(factory),
-        ingest_factory=wiring.build_ingest_service,
+        ingest_factory=wiring.ingest_factory(_settings()),
         notifier_factory=notifier,
     )
 
@@ -137,19 +142,21 @@ class TestReceiveLoop:
         assert receiver.stats.crc_error == 1
         assert receiver.stats.stored == 2  # 나머지는 정상 처리
 
-    async def test_unknown_device_is_counted_not_raised(
+    async def test_unknown_node_is_adopted_not_dropped(
         self,
         session_factory: sessionmaker[Session],
+        session: Session,
         sender: RecordingPushSender,
         now: datetime,
     ) -> None:
-        """등록 안 된 노드가 쏴도 루프가 죽지 않는다."""
+        """등록 경로가 없으므로 처음 보는 노드의 프레임도 버리지 않는다."""
         receiver = _receiver(session_factory, sender, _scenario_frames(2, now))
 
         await receiver.run()
 
-        assert receiver.stats.unknown_device == 2
-        assert receiver.stats.stored == 0
+        assert receiver.stats.stored == 2
+        assert receiver.stats.unknown_device == 0
+        assert SqlAlchemyDeviceRepository(session).get_by_mac(MAC) is not None
 
 
 class TestDispatchLogging:

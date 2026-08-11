@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.core.ingest_service import IngestService
 from app.domain.device import Device
-from app.domain.exceptions import DeviceNotRegistered
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.ports.frame_source import RawFrame
@@ -24,6 +23,7 @@ from app.infrastructure.lora.codec import FRAME_VERSION
 
 HW_ID = "aabbccddeeff"
 MAC = "AA:BB:CC:DD:EE:FF"
+MANAGEMENT_PHONE = "01029015899"
 
 
 @pytest.fixture
@@ -34,6 +34,7 @@ def ingest(session: Session) -> IngestService:
         alerts=SqlAlchemyAlertRepository(session),
         events=SqlAlchemyEventRepository(session),
         clock=SystemClock(),
+        default_management_phone=MANAGEMENT_PHONE,
     )
 
 
@@ -71,12 +72,31 @@ class TestDeviceResolution:
         assert outcome.device.id == registered.id
         assert outcome.device.hw_id == DeviceId(HW_ID)
 
-    def test_unregistered_node_is_rejected(self, ingest: IngestService, now: datetime) -> None:
-        """무선은 위조 가능한 경로다 — 자동 등록하지 않는다."""
+    def test_unknown_node_is_adopted(self, ingest: IngestService, now: datetime) -> None:
+        """등록 경로가 없으므로 첫 프레임이 기기를 만든다.
+
+        MAC은 hw_id에서 유도하고, 관리실 번호는 설정 기본값을 물려받는다 — 앱이
+        경보 화면에서 걸 번호를 받을 다른 통로가 없다.
+        """
         unknown = replace(_frame(1, AlertState.NORMAL, now), hw_id=DeviceId("112233445566"))
 
-        with pytest.raises(DeviceNotRegistered):
-            ingest.ingest(unknown, _raw(now))
+        outcome = ingest.ingest(unknown, _raw(now))
+
+        assert outcome.device.mac == "11:22:33:44:55:66"
+        assert outcome.device.hw_id == DeviceId("112233445566")
+        assert outcome.device.management_phone == MANAGEMENT_PHONE
+
+    def test_adoption_happens_once(self, ingest: IngestService, now: datetime) -> None:
+        """두 번째 프레임이 기기를 또 만들면 같은 노드가 둘로 갈라진다."""
+        unknown = replace(_frame(1, AlertState.NORMAL, now), hw_id=DeviceId("112233445566"))
+        first = ingest.ingest(unknown, _raw(now))
+
+        second = ingest.ingest(
+            replace(unknown, seq=2, measured_at=now + timedelta(seconds=1)),
+            _raw(now + timedelta(seconds=1)),
+        )
+
+        assert second.device.id == first.device.id
 
 
 class TestIdempotency:
