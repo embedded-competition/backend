@@ -23,6 +23,9 @@ pi = [
     "spidev>=3.6; sys_platform == 'linux'",
     # SX1276 NRESET 제어. 없으면 칩을 이상 상태에서 꺼낼 방법이 없다.
     "gpiozero>=2.0; sys_platform == 'linux'",
+    # RYLR은 AT 명령을 UART로 주고받는다. 보율·타임아웃을 termios로 직접 다루면
+    # 플랫폼별 상수에 매달리게 된다.
+    "pyserial>=3.5; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
@@ -96,6 +99,7 @@ max-args = 5
 # 자체가 실패한다. 계층 회피가 아니라 플랫폼 격리다.
 "app/infrastructure/lora/spi.py" = ["PLC0415"]
 "app/infrastructure/lora/gpio.py" = ["PLC0415"]
+"app/infrastructure/lora/rylr/serial_at_port.py" = ["PLC0415"]
 # _TOKEN_PREFIX는 비밀값이 아니라 토큰 문자열의 종류 식별 prefix다.
 "app/core/identity.py" = ["S105"]
 # device_id는 AuthenticatedDevice 의존성이 Path로 받아 소유권 검증에 쓴다.
@@ -124,7 +128,7 @@ files = ["app", "tests", "scripts", "migrations"]
 
 [[tool.mypy.overrides]]
 # ARM 하드웨어 라이브러리는 타입 스텁이 없다. 개별 지정 — 전역 무시 금지.
-module = ["spidev.*", "gpiozero.*", "firebase_admin.*"]
+module = ["spidev.*", "gpiozero.*", "serial.*", "firebase_admin.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
@@ -143,6 +147,11 @@ markers = [
 # `uv sync --no-dev` 배포에서만 터지는 누락을 잡지 못한다.
 [tool.deptry]
 known_first_party = ["app"]
+
+# 배포명과 import명이 다른 패키지. 적지 않으면 pyserial은 "선언했는데 안 쓴다",
+# serial은 "쓰는데 선언 안 했다"로 동시에 잡힌다.
+[tool.deptry.package_module_name_map]
+pyserial = ["serial"]
 
 [tool.deptry.per_rule_ignores]
 # ASGI 서버는 CLI로만 쓴다 — import 되지 않는 것이 정상.

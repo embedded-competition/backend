@@ -6,7 +6,8 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "pi"]
-LoraSource = Literal["sx1276", "fake"]
+LoraSource = Literal["sx1276", "rylr", "fake"]
+RylrPayload = Literal["hex", "text"]
 PushDelivery = Literal["expo", "log"]
 LogFormat = Literal["json", "text"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -39,6 +40,12 @@ class Settings(BaseSettings):
     lora_coding_rate: int = Field(default=5, ge=5, le=8)
     lora_preamble_length: int = 8
     lora_sync_word: int = 0x12
+    rylr_port: str = "/dev/ttyUSB0"
+    rylr_baud: int = 115_200
+    rylr_address: int = Field(default=1, ge=0, le=65535)
+    rylr_network_id: int = Field(default=18, ge=3, le=18)
+    rylr_payload: RylrPayload = "hex"
+
     fake_node_hw_id: str = "aabbccddeeff"
     fake_interval_s: float = 3.0
 
