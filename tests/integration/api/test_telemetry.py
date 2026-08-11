@@ -7,12 +7,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
+from app.core.telemetry_service import _EVENT_LIMIT
 from app.domain.frames import Coordinates
 from app.domain.measurements import Measure
 from app.domain.readings import RadioQuality
 from app.domain.value_objects import AlertState, SignatureFlags
+from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
+from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
-from tests.builders import a_frame, a_reading
+from tests.builders import a_frame, a_reading, an_event
 from tests.integration.api.client import RegisteredDevice
 
 
@@ -110,6 +113,36 @@ class TestHistory:
         assert payload["buckets"][1]["state"] == "WATCH"
         assert payload["buckets"][1]["gas"]["devZ"] == pytest.approx(8.0)
 
+    async def test_truncated_events_are_countable(
+        self, device: RegisteredDevice, session: Session, device_id: int
+    ) -> None:
+        """잘린 응답이 완전한 응답처럼 보이면 안 된다.
+
+        events는 상한까지만 담긴다. eventCount가 없으면 받은 쪽은 "기록이 N개"인지
+        "N개까지만 준 것"인지 구별할 수 없다.
+        """
+        base = datetime(2026, 8, 4, tzinfo=UTC)
+        stored = _EVENT_LIMIT + 5
+        events = SqlAlchemyEventRepository(session)
+        for offset in range(stored):
+            events.add(an_event(base + timedelta(seconds=offset), device_id=device_id))
+        session.commit()
+
+        payload = (
+            await device.get(
+                "telemetry/history",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(hours=1)).isoformat(),
+                    "interval": "10m",
+                },
+            )
+        ).json()
+
+        assert payload["eventCount"] == stored
+        assert len(payload["events"]) == _EVENT_LIMIT
+        assert len(payload["events"]) < payload["eventCount"]
+
     async def test_bad_interval_is_rejected(self, device: RegisteredDevice, now: datetime) -> None:
         response = await device.get(
             "telemetry/history",
@@ -186,9 +219,18 @@ class TestSummary:
         assert payload["current"] is not None
         assert payload["current"]["gas"]["devZ"] == pytest.approx(2.0)
 
-    async def test_empty_period_falls_back_to_last_known_state(
-        self, device: RegisteredDevice, now: datetime
+    async def test_empty_period_reports_no_state(
+        self, device: RegisteredDevice, session: Session, device_id: int, now: datetime
     ) -> None:
+        """관측이 없는 구간은 null이다.
+
+        기기의 현재 상태를 과거 구간의 답으로 쓰면, 그 기간에 아무 일도 없었는데도
+        화면이 "이 기간 중 경보 단계까지 갔어요"를 띄운다. 반대로 지금이 정상이면
+        과거의 실제 경보가 정상으로 덮인다. last_state를 ALARM으로 세워 두고
+        검증해야 그 폴백이 되살아나는 것을 잡는다.
+        """
+        _set_last_state(session, device_id, AlertState.ALARM)
+
         payload = (
             await device.get(
                 "telemetry/summary",
@@ -199,9 +241,46 @@ class TestSummary:
             )
         ).json()
 
-        assert payload["state"] == "WARMUP"
+        assert payload["state"] is None
         assert payload["peaks"]["gas"] is None
         assert payload["eventCount"] == 0
+
+    async def test_observed_period_reports_worst_state(
+        self, device: RegisteredDevice, session: Session, device_id: int
+    ) -> None:
+        """관측이 있으면 기기의 현재 상태와 무관하게 구간 중 최악이 나온다."""
+        base = datetime(2020, 5, 1, tzinfo=UTC)
+        _set_last_state(session, device_id, AlertState.NORMAL)
+        _store(session, device_id, base, seq=1, voc_dev=1.0)
+        _store(
+            session,
+            device_id,
+            base + timedelta(hours=1),
+            seq=2,
+            voc_dev=8.1,
+            state=AlertState.WATCH,
+        )
+
+        payload = (
+            await device.get(
+                "telemetry/summary",
+                params={
+                    "from": base.isoformat(),
+                    "to": (base + timedelta(days=1)).isoformat(),
+                },
+            )
+        ).json()
+
+        assert payload["state"] == "WATCH"
+
+
+def _set_last_state(session: Session, device_id: int, state: AlertState) -> None:
+    repository = SqlAlchemyDeviceRepository(session)
+    found = repository.get(device_id)
+    assert found is not None
+    found.observe(seq=1, at=datetime(2026, 1, 1, tzinfo=UTC), state=state)
+    repository.save(found)
+    session.commit()
 
 
 def _store(

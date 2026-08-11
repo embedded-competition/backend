@@ -12,5 +12,6 @@ class PeriodHistory:
     period: Period
     interval: Interval
     bucket_count: int
+    event_count: int
     buckets: list[Bucket] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)

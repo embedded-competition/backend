@@ -14,7 +14,15 @@ from app.domain.value_objects import AlertState
 
 class SummaryResponse(ApiModel):
     range: SummaryRangeResponse
-    state: Annotated[AlertState, Field(description="기간 중 가장 심각했던 상태")]
+    state: Annotated[
+        AlertState | None,
+        Field(
+            description=(
+                "기간 중 가장 심각했던 상태. 그 기간에 관측이 하나도 없으면 null이다 — "
+                "'데이터 없음'과 '정상'은 다른 사건이므로 NORMAL로 대신하지 않는다"
+            )
+        ),
+    ]
     peaks: Annotated[PeaksResponse, Field(description="채널별 기간 중 최고치와 그 시각")]
     event_count: Annotated[int, Field(description="기간 중 기록 수", examples=[3])]
     current: Annotated[

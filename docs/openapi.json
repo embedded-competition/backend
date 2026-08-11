@@ -1176,14 +1176,24 @@
               "$ref": "#/components/schemas/EventResponse"
             },
             "type": "array",
-            "title": "Events"
+            "title": "Events",
+            "description": "최근 순으로 최대 200개. 잘렸는지는 eventCount와 비교해 판단한다"
+          },
+          "eventCount": {
+            "type": "integer",
+            "title": "Eventcount",
+            "description": "기간 중 기록의 총 개수. len(events) < eventCount면 events가 잘린 것이다",
+            "examples": [
+              7127
+            ]
           }
         },
         "type": "object",
         "required": [
           "range",
           "buckets",
-          "events"
+          "events",
+          "eventCount"
         ],
         "title": "HistoryResponse"
       },
@@ -1453,8 +1463,15 @@
             "$ref": "#/components/schemas/SummaryRangeResponse"
           },
           "state": {
-            "$ref": "#/components/schemas/AlertState",
-            "description": "기간 중 가장 심각했던 상태"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기간 중 가장 심각했던 상태. 그 기간에 관측이 하나도 없으면 null이다 — '데이터 없음'과 '정상'은 다른 사건이므로 NORMAL로 대신하지 않는다"
           },
           "peaks": {
             "$ref": "#/components/schemas/PeaksResponse",

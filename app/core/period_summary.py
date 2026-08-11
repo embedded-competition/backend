@@ -10,7 +10,7 @@ from app.domain.value_objects import AlertState, GasChannel, Period
 class PeriodSummary:
     period: Period
     live: bool
-    state: AlertState
+    state: AlertState | None
     event_count: int
     current: Reading | None = None
     peaks: dict[GasChannel, ChannelPeak] = field(default_factory=dict)
