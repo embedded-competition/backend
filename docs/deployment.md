@@ -2,7 +2,8 @@
 
 대상: 전동 킥보드 배터리 화재 조기감지 백엔드. GitHub Actions로 Raspberry Pi Zero 2W에 배포.
 스키마 변경 절차는 [db-schema.md](db-schema.md). 앱 계약은 [api-contract-reconciliation.md](api-contract-reconciliation.md).
-Pi 최초 셋업 명령은 [cloudflare-setup.md](cloudflare-setup.md). 이 문서는 **왜 그렇게 하는지**만 적는다.
+Pi 최초 셋업 명령은 [cloudflare-setup.md](cloudflare-setup.md), 장소를 옮겼을 때의 복구는
+[pi-recovery.md](pi-recovery.md). 이 문서는 **왜 그렇게 하는지**만 적는다.
 
 ## 설계 전제
 
