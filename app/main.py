@@ -18,7 +18,7 @@ from app.domain.ports.frame_source import RawFrame
 from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.runtime import wiring
 from app.runtime.log_config import configure_logging
-from app.runtime.lora import create_frame_source
+from app.runtime.lora import create_frame_parser, create_frame_source
 from app.runtime.receiver import FrameReceiver
 from app.runtime.state import STATE_ATTRIBUTE, ReceiverLiveness, RuntimeState
 
@@ -91,6 +91,7 @@ def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
         session_scope=wiring.session_scope_factory(state.session_factory),
         ingest_factory=wiring.build_ingest_service,
         notifier_factory=wiring.notifier_factory(settings, wiring.create_push_sender(settings)),
+        parse=create_frame_parser(settings),
         on_frame=remember_last_frame,
     )
 

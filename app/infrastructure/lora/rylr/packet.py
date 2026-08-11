@@ -44,7 +44,7 @@ def _numbers(address_text: str, length_text: str, line: str) -> tuple[int, int]:
 
 
 def _decode(data: str, encoding: PayloadEncoding, line: str) -> bytes:
-    if encoding == "text":
+    if encoding in ("text", "node_csv"):
         return data.encode()
     try:
         return bytes.fromhex(data)

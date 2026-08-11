@@ -13,6 +13,7 @@ from app.core.notification_service import NotificationService
 from app.domain.alerting import Alert
 from app.domain.device import Device
 from app.domain.exceptions import DeviceInactive, DeviceNotRegistered, FrameError
+from app.domain.frames import TelemetryFrame
 from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.lora.frame import parse_frame
 from app.infrastructure.lora.stats import ReceiveStats
@@ -24,6 +25,11 @@ _REPORT_EVERY = 50
 SessionScope = Callable[[], AbstractContextManager[Session]]
 IngestFactory = Callable[[Session], IngestService]
 NotifierFactory = Callable[[Session], NotificationService]
+FrameParser = Callable[[RawFrame], TelemetryFrame]
+
+
+def parse_wire_frame(raw: RawFrame) -> TelemetryFrame:
+    return parse_frame(raw.payload)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -32,6 +38,7 @@ class FrameReceiver:
     session_scope: SessionScope
     ingest_factory: IngestFactory
     notifier_factory: NotifierFactory
+    parse: FrameParser = parse_wire_frame
     on_frame: Callable[[RawFrame], None] | None = None
     stats: ReceiveStats = field(default_factory=ReceiveStats)
 
@@ -72,7 +79,7 @@ class FrameReceiver:
             await self._dispatch(outcome.alert, outcome.device)
 
     def _store(self, raw: RawFrame) -> IngestOutcome | None:
-        frame = parse_frame(raw.payload)
+        frame = self.parse(raw)
         with self.session_scope() as session:
             outcome = self.ingest_factory(session).ingest(frame, raw)
         if outcome.duplicate:

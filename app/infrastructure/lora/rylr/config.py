@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-PayloadEncoding = Literal["hex", "text"]
+PayloadEncoding = Literal["hex", "text", "node_csv"]
 
 _BANDWIDTH_CODES = {125_000: 7, 250_000: 8, 500_000: 9}
 _LOWEST_CODING_RATE = 5
