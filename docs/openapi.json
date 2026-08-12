@@ -27,6 +27,66 @@
         }
       }
     },
+    "/v1/devices/{mac}": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "기기 정보 + 모듈 상태 (설정 화면)",
+        "description": "텔레메트리와 주기가 다르다 — 여기 담긴 것은 거의 바뀌지 않는다. 배터리·연결·센서 점검은 서버가 판정한 결과이고, 문장으로 만드는 것은 앱 몫이다.",
+        "operationId": "get_device_v1_devices__mac__get",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
+            },
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/devices/{mac}/push-token": {
       "post": {
         "tags": [
@@ -600,6 +660,39 @@
         ],
         "title": "AlarmReleaseResponse"
       },
+      "BatteryResponse": {
+        "properties": {
+          "percent": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Percent",
+            "examples": [
+              78
+            ]
+          },
+          "daysLeft": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daysleft",
+            "description": "남은 날 추정. 모르면 null",
+            "examples": [
+              40
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "percent"
+        ],
+        "title": "BatteryResponse"
+      },
       "BucketLevel": {
         "type": "string",
         "enum": [
@@ -856,6 +949,90 @@
         ],
         "title": "DeviceCurrentResponse"
       },
+      "DeviceResponse": {
+        "properties": {
+          "mac": {
+            "type": "string",
+            "title": "Mac",
+            "examples": [
+              "AA:BB:CC:DD:EE:FF"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "내 킥보드"
+            ]
+          },
+          "parkingSlot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parkingslot",
+            "examples": [
+              "B2-01"
+            ]
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatteryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "감지 모듈 배터리. 노드가 전압을 보내기 전까지 null"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkQuality"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "연결 상태. 한 번도 받은 적 없으면 null"
+          },
+          "sensorCheck": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorCheck"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "센서 점검 결과. 관측이 없으면 null"
+          },
+          "lastSeenAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenat",
+            "description": "마지막으로 프레임을 받은 시각 (UTC)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mac",
+          "label"
+        ],
+        "title": "DeviceResponse"
+      },
       "DeviceStatus": {
         "type": "string",
         "enum": [
@@ -1017,6 +1194,17 @@
           "1d"
         ],
         "title": "Interval"
+      },
+      "LinkQuality": {
+        "type": "string",
+        "enum": [
+          "OFFLINE",
+          "POOR",
+          "FAIR",
+          "GOOD"
+        ],
+        "title": "LinkQuality",
+        "description": "연결 상태. 신호 세기보다 '지금 닿는가'가 먼저다."
       },
       "LocationResponse": {
         "properties": {
@@ -1214,6 +1402,14 @@
           "rh"
         ],
         "title": "Sensor"
+      },
+      "SensorCheck": {
+        "type": "string",
+        "enum": [
+          "OK",
+          "FAULT"
+        ],
+        "title": "SensorCheck"
       },
       "SensorDetailResponse": {
         "properties": {

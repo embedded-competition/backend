@@ -13,14 +13,16 @@ from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepositor
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.push_tokens import SqlAlchemyPushTokenRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
-from app.runtime.deps import SessionDep
+from app.runtime.deps import SessionDep, SettingsDep
 
 
-def device_service_dep(session: SessionDep) -> DeviceService:
+def device_service_dep(session: SessionDep, settings: SettingsDep) -> DeviceService:
     return DeviceService(
         devices=SqlAlchemyDeviceRepository(session),
         push_tokens=SqlAlchemyPushTokenRepository(session),
+        readings=SqlAlchemyReadingRepository(session),
         clock=SystemClock(),
+        offline_after_s=settings.offline_threshold_s,
     )
 
 
