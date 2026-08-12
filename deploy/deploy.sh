@@ -16,6 +16,10 @@ REPO_DIR="${DEPLOY_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # 아래 2단계의 checkout이 이 파일 자체를 갈아치운다. bash는 스크립트를 필요할 때마다
 # 이어 읽으므로, 그대로 두면 옛 버전과 새 버전이 한 번의 실행 안에서 섞인다.
 # 저장소 밖 사본으로 옮겨 실행해 그 창을 없앤다.
+#
+# 그 대가: 사본은 checkout 전에 떠지므로 이 스크립트를 고친 배포는 여전히 옛
+# 스크립트로 실행된다. deploy.sh 변경은 항상 한 배포 늦게 효력이 생긴다.
+# 배포 절차를 바꿨는데 안 먹었으면 버그가 아니라 이것이니, 한 번 더 배포한다.
 if [ -z "${DEPLOY_DETACHED:-}" ]; then
     _copy="$(mktemp)"
     cat "${BASH_SOURCE[0]}" > "$_copy"
