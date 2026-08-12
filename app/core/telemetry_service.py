@@ -34,14 +34,13 @@ class TelemetryService:
     def current(self, device: Device) -> DeviceCurrent:
         reading = self.readings.latest(device.key)
         if reading is None:
-            return DeviceCurrent(management_phone=device.management_phone)
+            return DeviceCurrent()
         return DeviceCurrent(
             status=reading.state,
             conditions=reading.conditions,
             at=reading.measured_at,
             latched=reading.frame.latched,
             water=bool(reading.frame.water),
-            management_phone=device.management_phone,
             values=reading.frame.values,
         )
 

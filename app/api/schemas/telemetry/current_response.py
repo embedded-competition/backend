@@ -8,14 +8,25 @@ from pydantic import Field
 from app.api.schemas.base import ApiModel
 from app.api.schemas.channels import ChannelResponse
 from app.api.schemas.telemetry.conditions import ordered_conditions
+from app.api.schemas.telemetry.device_status import DeviceStatus
 from app.core.device_current import DeviceCurrent
 from app.domain.measurements import Measure
-from app.domain.value_objects import AlertState, Condition
+from app.domain.value_objects import Condition, Stage
 
 
 class DeviceCurrentResponse(ApiModel):
     status: Annotated[
-        AlertState | None, Field(description="지금 취해야 하는 상태. 관측이 없으면 null")
+        DeviceStatus | None,
+        Field(description="지금 취해야 하는 행동. 관측이 없거나 예열 중이면 null"),
+    ] = None
+    stage: Annotated[
+        Stage | None,
+        Field(
+            description=(
+                "화재로 가는 진행 단계. 앱은 이 단계까지 칸을 채운다. "
+                "판정할 규칙이 아직 없으면 null — NONE('이상 없음')과 다르다"
+            )
+        ),
     ] = None
     conditions: Annotated[
         list[Condition],
@@ -26,32 +37,24 @@ class DeviceCurrentResponse(ApiModel):
     ] = None
     latched: Annotated[bool, Field(description="ALARM latch 유지 여부. 자동 해제 없음")] = False
     water: Annotated[bool, Field(description="침수·누액 감지 여부")] = False
-    management_phone: Annotated[
-        str | None,
-        Field(description="관리실 전화번호. 경보 화면 버튼에 사용", examples=["01029015899"]),
-    ] = None
     gas: ChannelResponse | None = None
     h2: ChannelResponse | None = None
     co: ChannelResponse | None = None
     pressure: ChannelResponse | None = None
-    temp_c: Annotated[float | None, Field(examples=[26.1])] = None
-    rh: Annotated[float | None, Field(description="상대습도 %", examples=[43.4])] = None
 
     @classmethod
     def from_domain(cls, current: DeviceCurrent) -> DeviceCurrentResponse:
         return cls(
-            status=current.status,
+            status=DeviceStatus.of(current.status),
+            stage=Stage.from_conditions(current.conditions),
             conditions=ordered_conditions(current.conditions),
             at=current.at,
             latched=current.latched,
             water=current.water,
-            management_phone=current.management_phone,
             gas=_channel(current, Measure.VOC_DEV, Measure.VOC_SLOPE),
             h2=_channel(current, Measure.H2_DEV, Measure.H2_SLOPE),
             co=_channel(current, Measure.CO_DEV, Measure.CO_SLOPE),
             pressure=_channel(current, Measure.PRESSURE_DEV, Measure.PRESSURE_RATE),
-            temp_c=current.value(Measure.TEMP_C),
-            rh=current.value(Measure.HUMIDITY_PCT),
         )
 
 

@@ -13,7 +13,7 @@ from app.domain.value_objects import AlertState, Condition
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from tests.builders import a_frame, a_reading
-from tests.integration.api.client import MANAGEMENT_PHONE, UNKNOWN_MAC, SeededDevice
+from tests.integration.api.client import UNKNOWN_MAC, SeededDevice
 
 
 class TestMacAddressing:
@@ -91,9 +91,69 @@ class TestCurrent:
 
         payload = (await device.get("telemetry/current")).json()
 
-        assert payload["status"] == "WATCH"
+        assert payload["status"] == "STABLE"
         assert set(payload["conditions"]) == {"CO_RISE", "WATER"}
-        assert payload["managementPhone"] == MANAGEMENT_PHONE
+        assert payload["stage"] == "GAS_LEAK"
+
+    async def test_watch_is_stable_because_the_gauge_has_no_slot_for_it(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """게이지는 안정·정비요망·신고 세 지점뿐이다. 무엇을 지켜보는지는 stage가 답한다."""
+        _store(
+            session,
+            device_id,
+            datetime.now(UTC),
+            seq=1,
+            state=AlertState.FAULT,
+            conditions=frozenset({Condition.SENSOR_FAULT}),
+        )
+
+        payload = (await device.get("telemetry/current")).json()
+
+        assert payload["status"] == "SERVICE_NEEDED"
+        assert payload["stage"] == "NONE"
+
+    async def test_alarm_asks_the_user_to_report(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        _store(session, device_id, datetime.now(UTC), seq=1, state=AlertState.ALARM)
+
+        assert (await device.get("telemetry/current")).json()["status"] == "REPORT"
+
+    async def test_warmup_has_nothing_to_tell_the_user_yet(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """예열 중에 '안정'이라 답하면 감지가 시작되지도 않았는데 괜찮다고 말하는 것이다."""
+        _store(session, device_id, datetime.now(UTC), seq=1, state=AlertState.WARMUP)
+
+        assert (await device.get("telemetry/current")).json()["status"] is None
+
+    async def test_stage_is_null_when_no_rule_can_decide_it(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """모르는 것을 '이상 없음'으로 접으면 거짓말이 된다."""
+        _store(
+            session,
+            device_id,
+            datetime.now(UTC),
+            seq=1,
+            state=AlertState.WATCH,
+            conditions=frozenset({Condition.PRESSURE_RISE}),
+        )
+
+        assert (await device.get("telemetry/current")).json()["stage"] is None
+
+    async def test_temperature_and_humidity_are_not_exposed(
+        self, device: SeededDevice, session: Session, device_id: int
+    ) -> None:
+        """화면에 없다. 습도는 게이트 판정의 입력이지 표시값이 아니다."""
+        _store(session, device_id, datetime.now(UTC), seq=1, temp_c=26.1, humidity_pct=43.4)
+
+        payload = (await device.get("telemetry/current")).json()
+
+        assert "tempC" not in payload
+        assert "rh" not in payload
+        assert "managementPhone" not in payload
 
 
 class TestPeaks:
@@ -113,7 +173,7 @@ class TestPeaks:
             )
         ).json()
 
-        assert payload["status"] == "WATCH"
+        assert payload["status"] == "STABLE"
         assert payload["gas"]["value"] == pytest.approx(8.1)
         assert payload["gas"]["at"] == peak_at.isoformat().replace("+00:00", "Z")
         assert payload["co"] is None
@@ -170,7 +230,7 @@ class TestPeaks:
             )
         ).json()
 
-        assert payload["status"] == "WATCH"
+        assert payload["status"] == "STABLE"
 
     async def test_conditions_are_the_union_over_the_period(
         self, device: SeededDevice, session: Session, device_id: int
@@ -277,7 +337,7 @@ class TestSensorDetail:
         ).json()
 
         bucket = payload["buckets"][0]
-        assert set(bucket) == {"start", "value", "slope"}
+        assert set(bucket) == {"start", "level", "value", "slope"}
 
     async def test_temperature_has_no_slope(
         self, device: SeededDevice, session: Session, device_id: int
@@ -418,15 +478,21 @@ def _store(
     at: datetime,
     *,
     seq: int,
-    voc_dev: float,
+    voc_dev: float = 1.0,
     state: AlertState = AlertState.NORMAL,
     conditions: frozenset[Condition] = frozenset(),
     pressure_dev: float | None = None,
+    temp_c: float | None = None,
+    humidity_pct: float | None = None,
     location: Coordinates | None = None,
 ) -> None:
     values = {Measure.VOC_DEV: voc_dev}
     if pressure_dev is not None:
         values[Measure.PRESSURE_DEV] = pressure_dev
+    if temp_c is not None:
+        values[Measure.TEMP_C] = temp_c
+    if humidity_pct is not None:
+        values[Measure.HUMIDITY_PCT] = humidity_pct
     SqlAlchemyReadingRepository(session).add_if_absent(
         a_reading(
             at,

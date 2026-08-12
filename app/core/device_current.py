@@ -14,7 +14,6 @@ class DeviceCurrent:
     at: datetime | None = None
     latched: bool = False
     water: bool = False
-    management_phone: str | None = None
     values: dict[Measure, float] = field(default_factory=dict)
 
     def value(self, measure: Measure) -> float | None:

@@ -600,16 +600,15 @@
         ],
         "title": "AlarmReleaseResponse"
       },
-      "AlertState": {
+      "BucketLevel": {
         "type": "string",
         "enum": [
-          "WARMUP",
           "NORMAL",
-          "WATCH",
-          "ALARM",
-          "FAULT"
+          "CAUTION",
+          "DANGER"
         ],
-        "title": "AlertState"
+        "title": "BucketLevel",
+        "description": "차트 한 칸이 어느 정도인가. 앱은 이 값으로 칸을 색칠한다.\n\nstatus(사용자 행동)나 stage(진행 단계)와 다른 축이다. 저 둘은 기기 전체를\n말하지만 이것은 센서 하나의 한 구간만 말한다."
       },
       "ChannelResponse": {
         "properties": {
@@ -705,6 +704,17 @@
             "title": "Start",
             "description": "눈금 구간의 시작 시각 (UTC, 끝은 미포함)"
           },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BucketLevel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 칸의 정도(평소·주의·위험). 판정 기준이 아직 없어 지금은 항상 null이다 — 프레임 v2의 편차값이 와야 임계를 말할 수 있다"
+          },
           "value": {
             "anyOf": [
               {
@@ -747,13 +757,24 @@
           "status": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/AlertState"
+                "$ref": "#/components/schemas/DeviceStatus"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "지금 취해야 하는 상태. 관측이 없으면 null"
+            "description": "지금 취해야 하는 행동. 관측이 없거나 예열 중이면 null"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "화재로 가는 진행 단계. 앱은 이 단계까지 칸을 채운다. 판정할 규칙이 아직 없으면 null — NONE('이상 없음')과 다르다"
           },
           "conditions": {
             "items": {
@@ -787,21 +808,6 @@
             "title": "Water",
             "description": "침수·누액 감지 여부",
             "default": false
-          },
-          "managementPhone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Managementphone",
-            "description": "관리실 전화번호. 경보 화면 버튼에 사용",
-            "examples": [
-              "01029015899"
-            ]
           },
           "gas": {
             "anyOf": [
@@ -842,35 +848,6 @@
                 "type": "null"
               }
             ]
-          },
-          "tempC": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tempc",
-            "examples": [
-              26.1
-            ]
-          },
-          "rh": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rh",
-            "description": "상대습도 %",
-            "examples": [
-              43.4
-            ]
           }
         },
         "type": "object",
@@ -878,6 +855,16 @@
           "conditions"
         ],
         "title": "DeviceCurrentResponse"
+      },
+      "DeviceStatus": {
+        "type": "string",
+        "enum": [
+          "STABLE",
+          "SERVICE_NEEDED",
+          "REPORT"
+        ],
+        "title": "DeviceStatus",
+        "description": "사용자가 지금 무엇을 해야 하는가. 화면 게이지의 세 지점과 1:1이다.\n\n도메인의 AlertState는 다섯 값이지만 그중 둘은 사용자에게 시킬 행동이 없다.\nWARMUP은 아직 말할 것이 없고, WATCH는 \"지켜본다\"라서 게이지에 놓을 자리가\n없다 — 무엇을 지켜봐야 하는지는 stage가 대신 답한다."
       },
       "ErrorResponse": {
         "properties": {
@@ -922,10 +909,11 @@
       "EventResponse": {
         "properties": {
           "id": {
-            "type": "string",
+            "type": "integer",
             "title": "Id",
+            "description": "기록의 식별자",
             "examples": [
-              "evt_1"
+              1
             ]
           },
           "timestamp": {
@@ -1109,13 +1097,24 @@
           "status": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/AlertState"
+                "$ref": "#/components/schemas/DeviceStatus"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "기간 중 가장 심각했던 상태. 관측이 없으면 null"
+            "description": "기간 중 가장 심각했던 행동 단계. 관측이 없으면 null"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기간 중 도달한 가장 깊은 진행 단계. 판정 불가면 null"
           },
           "conditions": {
             "items": {
@@ -1163,35 +1162,6 @@
               {
                 "type": "null"
               }
-            ]
-          },
-          "tempC": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tempc",
-            "examples": [
-              26.1
-            ]
-          },
-          "rh": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rh",
-            "description": "상대습도 %",
-            "examples": [
-              43.4
             ]
           }
         },
@@ -1261,6 +1231,18 @@
           "buckets"
         ],
         "title": "SensorDetailResponse"
+      },
+      "Stage": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "TEMP_RISE",
+          "GAS_LEAK",
+          "RAPID_WORSENING",
+          "IGNITION"
+        ],
+        "title": "Stage",
+        "description": "화재로 가는 진행 단계. 값의 나열 순서가 곧 진행 순서다.\n\nCondition이 \"무엇이 일어나는가\"를 순서 없이 모아둔 것이라면, Stage는\n\"어디까지 왔는가\"를 하나로 답한다. 앱 화면은 이 단계까지 칸을 채운다."
       },
       "ValidationError": {
         "properties": {

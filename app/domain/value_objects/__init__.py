@@ -9,6 +9,7 @@ from app.domain.value_objects.gas_channel import GasChannel
 from app.domain.value_objects.interval import Interval
 from app.domain.value_objects.period import Period
 from app.domain.value_objects.signature_flags import SignatureFlags
+from app.domain.value_objects.stage import Stage
 
 __all__ = [
     "AlertState",
@@ -20,4 +21,5 @@ __all__ = [
     "Interval",
     "Period",
     "SignatureFlags",
+    "Stage",
 ]

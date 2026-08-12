@@ -31,7 +31,7 @@ class TestEventList:
 
         assert len(payload["items"]) == 1
         assert payload["items"][0]["kind"] == "suppressed"
-        assert payload["items"][0]["id"].startswith("evt_")
+        assert payload["items"][0]["id"] >= 1
         assert payload["truncated"] is False
 
     async def test_truncation_is_signalled_not_silent(

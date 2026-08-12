@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.domain.frames import Coordinates
-from app.domain.value_objects import AlertState, Condition, DeviceId
+from app.domain.value_objects import AlertState, Condition, DeviceId, Stage
 
 
 class TestDeviceId:
@@ -46,6 +46,43 @@ class TestAlertState:
     )
     def test_from_conditions(self, conditions: frozenset[Condition], expected: AlertState) -> None:
         assert AlertState.from_conditions(conditions) is expected
+
+
+class TestStage:
+    """단계는 화면 진행 바의 SSOT다. 앱이 집합에서 역산하면 서버와 어긋난다."""
+
+    @pytest.mark.parametrize(
+        ("conditions", "expected"),
+        [
+            (frozenset(), Stage.NONE),
+            (frozenset({Condition.CO_RISE}), Stage.GAS_LEAK),
+            (frozenset({Condition.H2_RISE}), Stage.GAS_LEAK),
+            (frozenset({Condition.VOC_RISE}), Stage.GAS_LEAK),
+            (frozenset({Condition.CO_RISE, Condition.PRESSURE_RISE}), Stage.GAS_LEAK),
+            (frozenset({Condition.WATER}), Stage.NONE),
+            (frozenset({Condition.SENSOR_FAULT}), Stage.NONE),
+        ],
+    )
+    def test_decidable_conditions(self, conditions: frozenset[Condition], expected: Stage) -> None:
+        assert Stage.from_conditions(conditions) is expected
+
+    @pytest.mark.parametrize(
+        "conditions",
+        [
+            frozenset({Condition.PRESSURE_RISE}),
+            frozenset({Condition.UNKNOWN}),
+            frozenset({Condition.PRESSURE_RISE, Condition.SENSOR_FAULT}),
+        ],
+    )
+    def test_undecidable_is_none_not_stage_none(self, conditions: frozenset[Condition]) -> None:
+        """'모른다'와 '이상 없음'은 다른 사건이다."""
+        assert Stage.from_conditions(conditions) is None
+
+    def test_water_and_fault_are_not_on_the_fire_axis(self) -> None:
+        """침수·센서고장은 화재 진행이 아니라 status가 답할 몫이다."""
+        assert Stage.from_conditions(frozenset({Condition.WATER, Condition.SENSOR_FAULT})) is (
+            Stage.NONE
+        )
 
 
 class TestCoordinates:
