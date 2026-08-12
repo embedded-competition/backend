@@ -163,12 +163,19 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 
 `AlertState`(WARMUP/NORMAL/WATCH/ALARM/FAULT) 하나가 "사용자가 취해야 하는 상태"와
 "기기에 무슨 일이 일어나는가"라는 두 축을 접고 있었다. 후자를 `Condition`
-(`CO_RISE`/`H2_RISE`/`VOC_RISE`/`PRESSURE_RISE`/`WATER`/`SENSOR_FAULT`)으로 분리해 배열로 내려준다 —
-여러 원인이 동시에 성립할 수 있어서다. `status`는 기존 `state`와 같은 값·같은 도출 규칙을 유지한다.
+(`CO_RISE`/`H2_RISE`/`VOC_RISE`/`PRESSURE_RISE`/`WATER`/`SENSOR_FAULT`/`UNKNOWN`)으로 분리해
+배열로 내려준다 — 여러 원인이 동시에 성립할 수 있어서다. `status`는 기존 `state`와 같은 값·같은
+도출 규칙을 유지한다.
 
 **호환 규칙**: `TEMP_RISE`·`RAPID_WORSENING`·`IGNITION`은 프레임 v2에서 추가될 예정이라 지금은
 만들지 않는다. **클라는 모르는 `conditions` 값을 무시해야 한다** — 나중에 값이 늘어도 이 계약이
 깨지지 않게 하기 위해서다.
+
+**`UNKNOWN`**: 노드가 매핑표에 없는 ALERT 원인을 보내면 프레임을 버리지 않고 `UNKNOWN`으로
+흡수한다(서버 로그에 원본 문자열을 남겨 다음 배포에서 정확한 값으로 승격한다). 펌웨어와 서버는
+따로 배포되므로 이 상황은 예정된 일이다 — 그 순간 프레임을 버리면 새 이상이 감지된 바로 그
+때 센서 값까지 함께 사라진다. `status`엔 WATCH로 반영되고(`SENSOR_FAULT`가 아닌 원인이므로),
+클라는 `UNKNOWN`도 위 호환 규칙에 따라 무시하면 된다.
 
 ### E4. `telemetry/history` → `sensors/{sensor}/detail`
 

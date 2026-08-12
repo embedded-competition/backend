@@ -40,6 +40,8 @@ class TestAlertState:
                 frozenset({Condition.CO_RISE, Condition.H2_RISE, Condition.WATER}),
                 AlertState.WATCH,
             ),
+            (frozenset({Condition.UNKNOWN}), AlertState.WATCH),
+            (frozenset({Condition.UNKNOWN, Condition.SENSOR_FAULT}), AlertState.WATCH),
         ],
     )
     def test_from_conditions(self, conditions: frozenset[Condition], expected: AlertState) -> None:
