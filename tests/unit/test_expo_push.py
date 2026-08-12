@@ -6,6 +6,7 @@ Expo 응답 해석이 틀리면 죽은 토큰을 계속 재시도하거나(실�
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -119,6 +120,25 @@ class TestRequestShape:
         body = seen[0].read().decode()
         assert "ExponentPushToken[x]" in body
         assert '"priority": "high"' in body or '"priority":"high"' in body
+
+    async def test_data_addresses_the_device_by_mac(self) -> None:
+        """앱은 MAC으로 기기 화면을 연다. public_id는 v1에서 경로가 아니다."""
+        seen: list[dict[str, Any]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(json.loads(request.read()))
+            return httpx.Response(200, json={"data": {"status": "ok"}})
+
+        device = a_device()
+        await _sender(handler).send(
+            token="ExponentPushToken[x]", alert=an_alert(_NOW, key=1), device=device
+        )
+
+        assert seen[0]["data"] == {
+            "deviceMac": device.mac,
+            "status": "ALARM",
+            "alertId": "1",
+        }
 
 
 class TestInjectedClientOwnership:

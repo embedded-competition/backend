@@ -31,8 +31,8 @@ def build(alert: Alert, device: Device) -> PushMessage:
         title=_TITLE.get(alert.to_state, "상태가 변경됐어요"),
         body=_BODY.get(alert.to_state, f"{device.label} 상태를 확인해 주세요"),
         data={
-            "deviceId": device.public_id,
-            "state": alert.to_state.value,
+            "deviceMac": device.mac,
+            "status": alert.to_state.value,
             "alertId": str(alert.key),
         },
     )
