@@ -9,6 +9,7 @@ from app.domain.measurements import Aspect, Measure
 from app.domain.value_objects import (
     AlertState,
     ChannelReading,
+    Condition,
     DeviceId,
     GasChannel,
     SignatureFlags,
@@ -21,6 +22,7 @@ class TelemetryFrame:
     seq: int
     measured_at: datetime
     state: AlertState
+    conditions: frozenset[Condition] = frozenset()
     hw_id: DeviceId | None = None
     latched: bool = False
     values: dict[Measure, float] = field(default_factory=dict)

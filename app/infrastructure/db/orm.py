@@ -12,7 +12,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.infrastructure.db.types import UtcDateTime
+from app.domain.value_objects import Condition
+from app.infrastructure.db.types import ConditionSet, UtcDateTime
 
 
 class Base(DeclarativeBase):
@@ -63,6 +64,7 @@ class ReadingOrm(Base):
     received_at: Mapped[datetime] = mapped_column(UtcDateTime)
     frame_version: Mapped[int]
     state: Mapped[str] = mapped_column(String(8))
+    conditions: Mapped[frozenset[Condition] | None] = mapped_column(ConditionSet, default=None)
     latched: Mapped[bool | None] = mapped_column(default=None)
 
     voc_dev: Mapped[float | None] = mapped_column(default=None)

@@ -12,11 +12,13 @@ from app.domain.exceptions import (
     InvalidInterval,
     InvalidMac,
     InvalidPeriod,
+    LocationUnavailable,
     ReleaseNotAllowed,
 )
 
 _STATUS_BY_EXCEPTION: tuple[tuple[type[DomainError], int], ...] = (
     (DeviceNotFound, status.HTTP_404_NOT_FOUND),
+    (LocationUnavailable, status.HTTP_404_NOT_FOUND),
     (AlertNotFound, status.HTTP_404_NOT_FOUND),
     (AlertAlreadyAcknowledged, status.HTTP_409_CONFLICT),
     (DeviceInactive, status.HTTP_409_CONFLICT),

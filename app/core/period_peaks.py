@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from app.domain.measurements import Measure
-from app.domain.timestamps import require_aware
+from app.domain.readings import ChannelPeak
 from app.domain.value_objects import AlertState, Condition
 
 
 @dataclass(frozen=True, slots=True)
-class PeriodExtremes:
-    at: datetime
-    state: AlertState
-    latched: bool = False
-    water: bool = False
+class PeriodPeaks:
+    status: AlertState | None = None
     conditions: frozenset[Condition] = frozenset()
+    channels: dict[Measure, ChannelPeak] = field(default_factory=dict)
     values: dict[Measure, float] = field(default_factory=dict)
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "at", require_aware(self.at, "at"))
+    def channel(self, deviation: Measure) -> ChannelPeak | None:
+        return self.channels.get(deviation)
 
     def value(self, measure: Measure) -> float | None:
         return self.values.get(measure)

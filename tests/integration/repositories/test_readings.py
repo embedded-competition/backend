@@ -10,6 +10,7 @@ from app.domain.frames import Coordinates
 from app.domain.measurements import Measure
 from app.domain.value_objects import (
     AlertState,
+    Condition,
     GasChannel,
     Interval,
     Period,
@@ -145,6 +146,33 @@ class TestValueRoundTrip:
         assert stored is not None
         assert stored.frame.location is None
 
+    def test_conditions_roundtrip(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        readings.add_if_absent(
+            a_reading(
+                now,
+                device_id=device_id,
+                frame=a_frame(now, conditions=frozenset({Condition.CO_RISE, Condition.WATER})),
+            )
+        )
+
+        stored = readings.latest(device_id)
+
+        assert stored is not None
+        assert stored.conditions == frozenset({Condition.CO_RISE, Condition.WATER})
+
+    def test_conditions_default_to_empty_when_absent(
+        self, readings: SqlAlchemyReadingRepository, device_id: int, now: datetime
+    ) -> None:
+        """프레임은 항상 실제 값(빈 집합 포함)을 싣는다 — NULL은 과거 미마이그레이션 행의 몫."""
+        readings.add_if_absent(a_reading(now, device_id=device_id))
+
+        stored = readings.latest(device_id)
+
+        assert stored is not None
+        assert stored.conditions == frozenset()
+
 
 class TestBucketMaxima:
     def test_same_hour_on_different_days_stays_apart(
@@ -159,7 +187,7 @@ class TestBucketMaxima:
         buckets = readings.bucket_maxima(
             device_id,
             Period(datetime(2026, 8, 4, tzinfo=UTC), datetime(2026, 8, 8, tzinfo=UTC)),
-            Interval.parse("1h"),
+            Interval.H1,
         )
 
         assert len(buckets) == 2
@@ -175,7 +203,7 @@ class TestBucketMaxima:
             _store(readings, device_id, now + timedelta(minutes=index), seq=index, voc_dev=value)
 
         buckets = readings.bucket_maxima(
-            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
+            device_id, Period(now, now + timedelta(hours=1)), Interval.H1
         )
 
         assert len(buckets) == 1
@@ -189,7 +217,7 @@ class TestBucketMaxima:
             _store(readings, device_id, now + timedelta(minutes=index), seq=index, state=state)
 
         buckets = readings.bucket_maxima(
-            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
+            device_id, Period(now, now + timedelta(hours=1)), Interval.H1
         )
 
         assert buckets[0].state is AlertState.ALARM
@@ -201,7 +229,7 @@ class TestBucketMaxima:
         _store(readings, device_id, now + timedelta(hours=3), seq=2, voc_dev=2.0)
 
         period = Period(now, now + timedelta(hours=4))
-        buckets = readings.bucket_maxima(device_id, period, Interval.parse("1h"))
+        buckets = readings.bucket_maxima(device_id, period, Interval.H1)
 
         assert [b.start for b in buckets] == [now, now + timedelta(hours=3)]
 
@@ -214,7 +242,7 @@ class TestBucketMaxima:
         _store(readings, device_id, now, seq=99_999, voc_dev=7.0)
 
         buckets = readings.bucket_maxima(
-            device_id, Period(now, now + timedelta(hours=1)), Interval.parse("1h")
+            device_id, Period(now, now + timedelta(hours=1)), Interval.H1
         )
 
         assert buckets[0].samples == 2_101

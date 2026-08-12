@@ -128,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(health.router)
-    app.include_router(devices.router)
-    app.include_router(telemetry.router)
-    app.include_router(alerts.router)
+    app.include_router(devices.router, prefix="/v1")
+    app.include_router(telemetry.router, prefix="/v1")
+    app.include_router(alerts.router, prefix="/v1")
     return app

@@ -5,6 +5,8 @@ from typing import Any
 
 from sqlalchemy import Dialect, String, TypeDecorator
 
+from app.domain.value_objects import Condition
+
 
 class UtcDateTime(TypeDecorator[datetime]):
     impl = String(32)
@@ -22,3 +24,22 @@ class UtcDateTime(TypeDecorator[datetime]):
         if value is None:
             return None
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+class ConditionSet(TypeDecorator[frozenset[Condition]]):
+    impl = String(64)
+    cache_ok = True
+
+    def process_bind_param(
+        self, value: frozenset[Condition] | None, _dialect: Dialect
+    ) -> str | None:
+        if value is None:
+            return None
+        return ",".join(sorted(condition.value for condition in value))
+
+    def process_result_value(self, value: Any, _dialect: Dialect) -> frozenset[Condition] | None:
+        if value is None:
+            return None
+        if not value:
+            return frozenset()
+        return frozenset(Condition(item) for item in str(value).split(","))

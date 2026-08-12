@@ -33,30 +33,21 @@ class TestValidation:
             Period(datetime(2026, 8, 4), NOW + timedelta(days=1))  # noqa: DTZ001
 
 
-class TestMembership:
-    def test_start_is_included_and_end_is_not(self) -> None:
-        period = Period(NOW, NOW + timedelta(hours=1))
-
-        assert period.includes(NOW) is True
-        assert period.includes(NOW + timedelta(minutes=59)) is True
-        assert period.includes(NOW + timedelta(hours=1)) is False
-
-
 class TestBuckets:
     def test_accepts_a_tick_that_fits(self) -> None:
         period = Period(NOW, NOW + timedelta(hours=7))
 
-        period.require_supported(Interval.parse("2h"))
+        period.require_supported(Interval.H2)
 
     def test_rejects_a_tick_that_explodes_the_response(self) -> None:
         period = Period(NOW, NOW + timedelta(days=90))
 
         with pytest.raises(InvalidInterval):
-            period.require_supported(Interval.parse("1m"))
+            period.require_supported(Interval.M5)
 
     def test_bucket_start_walks_by_the_tick(self) -> None:
         period = Period(NOW, NOW + timedelta(days=1))
-        interval = Interval.parse("2h")
+        interval = Interval.H2
 
         assert period.bucket_start(0, interval) == NOW
         assert period.bucket_start(3, interval) == NOW + timedelta(hours=6)

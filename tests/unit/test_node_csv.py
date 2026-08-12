@@ -12,7 +12,7 @@ import pytest
 
 from app.domain.exceptions import FrameFieldError
 from app.domain.measurements import Measure
-from app.domain.value_objects import AlertState
+from app.domain.value_objects import AlertState, Condition
 from app.infrastructure.lora.node_csv import NodeCsvParser
 
 _LINE = b"MQ7=1234,MQ8=987,SGP=30000,FSR=100,WATER=50,ALERT=NONE"
@@ -54,25 +54,41 @@ class TestValues:
 
 class TestState:
     def test_none_is_normal(self) -> None:
-        assert _parser().parse(_LINE, _AT).state is AlertState.NORMAL
+        frame = _parser().parse(_LINE, _AT)
+
+        assert frame.state is AlertState.NORMAL
+        assert frame.conditions == frozenset()
 
     def test_any_cause_is_watch(self) -> None:
         line = b"MQ7=1,MQ8=1,SGP=1,FSR=1,WATER=1,ALERT=MQ7|SGP40"
+        frame = _parser().parse(line, _AT)
 
-        assert _parser().parse(line, _AT).state is AlertState.WATCH
+        assert frame.state is AlertState.WATCH
+        assert frame.conditions == frozenset({Condition.CO_RISE, Condition.VOC_RISE})
 
     def test_saturation_alone_is_fault(self) -> None:
         """포화된 센서는 위험이 아니라 못 믿는 상태다."""
         line = b"MQ7=4095,MQ8=4095,SGP=1,FSR=1,WATER=1,ALERT=MQ7_SATURATED|MQ8_SATURATED"
+        frame = _parser().parse(line, _AT)
 
-        assert _parser().parse(line, _AT).state is AlertState.FAULT
+        assert frame.state is AlertState.FAULT
+        assert frame.conditions == frozenset({Condition.SENSOR_FAULT})
 
-    def test_water_alert_sets_the_flag(self) -> None:
+    def test_water_alert_sets_the_flag_and_condition(self) -> None:
         line = b"MQ7=1,MQ8=1,SGP=1,FSR=1,WATER=900,ALERT=WATER_LEVEL"
         frame = _parser().parse(line, _AT)
 
         assert frame.water is True
         assert frame.state is AlertState.WATCH
+        assert frame.conditions == frozenset({Condition.WATER})
+
+    def test_fault_and_rise_causes_together_are_watch(self) -> None:
+        """SENSOR_FAULT가 하나라도 다른 원인과 섞이면 더 이상 '전부 불신'이 아니다."""
+        line = b"MQ7=4095,MQ8=1,SGP=1,FSR=1,WATER=1,ALERT=MQ7_SATURATED|MQ8"
+        frame = _parser().parse(line, _AT)
+
+        assert frame.state is AlertState.WATCH
+        assert frame.conditions == frozenset({Condition.SENSOR_FAULT, Condition.H2_RISE})
 
 
 class TestMalformed:
@@ -90,3 +106,7 @@ class TestMalformed:
 
         assert frame.value(Measure.CO_DEV) == 10.0
         assert frame.value(Measure.H2_DEV) is None
+
+    def test_unknown_alert_cause_is_rejected(self) -> None:
+        with pytest.raises(FrameFieldError, match="UNKNOWN_CAUSE"):
+            _parser().parse(b"MQ7=1,ALERT=UNKNOWN_CAUSE", _AT)

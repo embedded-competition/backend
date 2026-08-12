@@ -12,6 +12,7 @@ from app.domain.exceptions.frame_too_short import FrameTooShort
 from app.domain.exceptions.invalid_interval import InvalidInterval
 from app.domain.exceptions.invalid_mac import InvalidMac
 from app.domain.exceptions.invalid_period import InvalidPeriod
+from app.domain.exceptions.location_unavailable import LocationUnavailable
 from app.domain.exceptions.release_not_allowed import ReleaseNotAllowed
 from app.domain.exceptions.unsupported_frame_version import UnsupportedFrameVersion
 
@@ -28,6 +29,7 @@ __all__ = [
     "InvalidInterval",
     "InvalidMac",
     "InvalidPeriod",
+    "LocationUnavailable",
     "ReleaseNotAllowed",
     "UnsupportedFrameVersion",
 ]

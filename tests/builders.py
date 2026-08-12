@@ -14,7 +14,7 @@ from app.domain.device import Device
 from app.domain.frames import Coordinates, TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.readings import RadioQuality, Reading
-from app.domain.value_objects import AlertState, DeviceId, EventKind, SignatureFlags
+from app.domain.value_objects import AlertState, Condition, DeviceId, EventKind, SignatureFlags
 
 HW_ID = DeviceId("44bd8d239c28")
 MAC = "44:BD:8D:23:9C:28"
@@ -51,6 +51,7 @@ def a_frame(
     version: int = 1,
     seq: int = 1,
     state: AlertState = AlertState.NORMAL,
+    conditions: frozenset[Condition] = frozenset(),
     values: dict[Measure, float] | None = None,
     signature: SignatureFlags | None = None,
     batt_mv: int | None = None,
@@ -63,6 +64,7 @@ def a_frame(
         seq=seq,
         measured_at=measured_at,
         state=state,
+        conditions=conditions,
         values=values or {},
         signature=signature,
         batt_mv=batt_mv,

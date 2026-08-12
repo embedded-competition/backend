@@ -29,9 +29,6 @@ class Period:
     def span(self) -> timedelta:
         return self.end - self.start
 
-    def includes(self, moment: datetime) -> bool:
-        return self.start <= require_aware(moment, "moment") < self.end
-
     def require_supported(self, interval: Interval) -> None:
         count = -(-int(self.span.total_seconds()) // interval.seconds)
         if count > _MAXIMUM_BUCKETS:

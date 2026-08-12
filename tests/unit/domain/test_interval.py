@@ -1,44 +1,33 @@
-"""집계 눈금 파싱.
-
-앱이 보내는 문자열이 그대로 질의 폭이 된다 — 형식이 새면 버킷 경계가 샌다.
-"""
+"""집계 눈금. 허용값을 닫힌 집합으로 좁혀 정규화·에코백 필요를 없앤다."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.domain.exceptions import InvalidInterval
 from app.domain.value_objects import Interval
 
 
-class TestParse:
+class TestSeconds:
     @pytest.mark.parametrize(
-        ("text", "seconds"),
-        [("1m", 60), ("30m", 1_800), ("2h", 7_200), ("1d", 86_400), ("7d", 604_800)],
+        ("interval", "seconds"),
+        [
+            (Interval.M5, 300),
+            (Interval.M15, 900),
+            (Interval.M30, 1_800),
+            (Interval.H1, 3_600),
+            (Interval.H2, 7_200),
+            (Interval.H6, 21_600),
+            (Interval.H12, 43_200),
+            (Interval.D1, 86_400),
+        ],
     )
-    def test_accepts_minute_hour_day(self, text: str, seconds: int) -> None:
-        assert Interval.parse(text).seconds == seconds
-
-    @pytest.mark.parametrize("text", ["", "2", "h", "0h", "-2h", "2주", "2H", "1.5h", " 2h"])
-    def test_rejects_anything_else(self, text: str) -> None:
-        with pytest.raises(InvalidInterval):
-            Interval.parse(text)
-
-    def test_rejects_below_one_minute(self) -> None:
-        with pytest.raises(InvalidInterval):
-            Interval(30)
-
-    def test_rejects_beyond_thirty_one_days(self) -> None:
-        with pytest.raises(InvalidInterval):
-            Interval(32 * 86_400)
+    def test_each_member_knows_its_length(self, interval: Interval, seconds: int) -> None:
+        assert interval.seconds == seconds
+        assert interval.delta.total_seconds() == seconds
 
 
-class TestRoundTrip:
-    @pytest.mark.parametrize("text", ["30m", "2h", "1d", "7d"])
-    def test_renders_back_to_what_was_parsed(self, text: str) -> None:
-        """응답의 range.interval이 요청과 달라 보이면 앱이 캐시 키를 잘못 잡는다."""
-        assert str(Interval.parse(text)) == text
-
-    def test_prefers_the_widest_unit(self) -> None:
-        assert str(Interval(86_400)) == "1d"
-        assert str(Interval(7_200)) == "2h"
+class TestClosedSet:
+    def test_unknown_value_is_rejected(self) -> None:
+        """형식 검증은 닫힌 집합이라는 사실 자체가 한다 — API 경계는 pydantic이 막는다."""
+        with pytest.raises(ValueError, match="120m"):
+            Interval("120m")

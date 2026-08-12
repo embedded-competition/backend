@@ -39,7 +39,7 @@ class SeededDevice:
         return await self.client.post(self._url(path), **kwargs)
 
     def _url(self, path: str) -> str:
-        return f"/devices/{self.mac}/{path}"
+        return f"/v1/devices/{self.mac}/{path}"
 
 
 def seed_device(session: Session, client: AsyncClient, mac: str = MAC) -> SeededDevice:

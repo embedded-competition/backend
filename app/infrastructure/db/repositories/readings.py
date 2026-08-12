@@ -11,7 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.domain.frames import Coordinates, TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.readings import Bucket, ChannelPeak, PeriodExtremes, RadioQuality, Reading
-from app.domain.value_objects import AlertState, Interval, Period, SignatureFlags
+from app.domain.value_objects import AlertState, Condition, Interval, Period, SignatureFlags
 from app.infrastructure.db.orm import ReadingOrm
 
 _EPOCH_FORMAT = "%s"
@@ -83,6 +83,7 @@ class SqlAlchemyReadingRepository:
                 _severity_of_row().label("severity"),
                 func.max(ReadingOrm.latched).label("latched"),
                 func.max(ReadingOrm.water).label("water"),
+                func.group_concat(ReadingOrm.conditions, ",").label("conditions"),
                 *(func.max(_column_of(measure)).label(measure.value) for measure in Measure),
             ).where(*_within(device_id, period))
         ).one()
@@ -93,6 +94,7 @@ class SqlAlchemyReadingRepository:
             state=AlertState.of_severity(row.severity),
             latched=bool(row.latched),
             water=bool(row.water),
+            conditions=_conditions_union(row.conditions),
             values=_maxima_of(row),
         )
 
@@ -152,6 +154,17 @@ def _maxima_of(row: Any) -> dict[Measure, float]:
     return {measure: value for measure, value in found if value is not None}
 
 
+def _conditions_union(concatenated: str | None) -> frozenset[Condition]:
+    """각 행의 conditions를 ','로 이미 이어 뒀으니, group_concat 결과도 같은 구분자로 잇는다.
+
+    빈 문자열(그 행에 원인 없음)과 NULL(마이그레이션 전 행)이 섞여 들어와도
+    빈 조각은 걸러지므로 결과는 항상 실제로 관측된 원인들의 합집합이다.
+    """
+    if not concatenated:
+        return frozenset()
+    return frozenset(Condition(item) for item in concatenated.split(",") if item)
+
+
 def _to_domain(row: ReadingOrm) -> Reading:
     return Reading(
         id=row.id,
@@ -163,6 +176,7 @@ def _to_domain(row: ReadingOrm) -> Reading:
             seq=row.seq,
             measured_at=row.measured_at,
             state=AlertState(row.state),
+            conditions=row.conditions or frozenset(),
             latched=bool(row.latched),
             values=_values_of(row),
             signature=_signature_of(row),
@@ -200,6 +214,7 @@ def _to_columns(reading: Reading) -> dict[str, object]:
         "received_at": reading.received_at,
         "frame_version": frame.version,
         "state": frame.state.value,
+        "conditions": frame.conditions,
         "latched": frame.latched,
         "water": frame.water,
         "batt_mv": frame.batt_mv,

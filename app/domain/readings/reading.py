@@ -8,7 +8,7 @@ from app.domain.measurements import Measure
 from app.domain.readings.radio_quality import RadioQuality
 from app.domain.stored import require_stored
 from app.domain.timestamps import require_aware
-from app.domain.value_objects import AlertState, ChannelReading, GasChannel
+from app.domain.value_objects import AlertState, ChannelReading, Condition, GasChannel
 
 
 @dataclass(slots=True)
@@ -33,6 +33,10 @@ class Reading:
     @property
     def state(self) -> AlertState:
         return self.frame.state
+
+    @property
+    def conditions(self) -> frozenset[Condition]:
+        return self.frame.conditions
 
     @property
     def measured_at(self) -> datetime:

@@ -146,6 +146,49 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 
 ---
 
+## E. v1 계약 개편
+
+### E1. 모든 도메인 경로에 `/v1` 접두
+
+`/health`·`/docs`는 운영용이라 버전 밖에 둔다. 나머지는 전부 `/v1/devices/{mac}/...`.
+
+### E2. `telemetry/summary` → `telemetry/current` + `telemetry/peaks`
+
+`live` boolean 하나로 "지금 값"과 "기간 중 최고치"라는 서로 다른 두 응답을 겸하던 것을 쪼갰다.
+`current`는 구간 개념 자체가 없고(from/to 파라미터 없음), `peaks`는 from/to를 받되 에코백하지 않는다
+(서버가 손대지 않는 값이라 클라가 이미 안다). 부수 효과로, `_live` 경로가 period를 무시하고
+`readings.latest()`를 그대로 돌려주던 버그가 `current`에는 period 자체가 없어져 구조적으로 사라졌다.
+
+### E3. `state` → `status` + `conditions[]`
+
+`AlertState`(WARMUP/NORMAL/WATCH/ALARM/FAULT) 하나가 "사용자가 취해야 하는 상태"와
+"기기에 무슨 일이 일어나는가"라는 두 축을 접고 있었다. 후자를 `Condition`
+(`CO_RISE`/`H2_RISE`/`VOC_RISE`/`PRESSURE_RISE`/`WATER`/`SENSOR_FAULT`)으로 분리해 배열로 내려준다 —
+여러 원인이 동시에 성립할 수 있어서다. `status`는 기존 `state`와 같은 값·같은 도출 규칙을 유지한다.
+
+**호환 규칙**: `TEMP_RISE`·`RAPID_WORSENING`·`IGNITION`은 프레임 v2에서 추가될 예정이라 지금은
+만들지 않는다. **클라는 모르는 `conditions` 값을 무시해야 한다** — 나중에 값이 늘어도 이 계약이
+깨지지 않게 하기 위해서다.
+
+### E4. `telemetry/history` → `sensors/{sensor}/detail`
+
+여러 채널을 한 번에 담던 `history`를 채널 하나만 보는 `sensors/{sensor}/detail`로 쪼갰다
+(`sensor` ∈ `gas|h2|co|pressure|temp|rh`). 칸(`bucket`)에서 `state`·`samples`·`events`를 뺐다 —
+단일 채널에 기기 전체 상태를 붙이면 축이 안 맞고, 기록은 이미 `/events`가 따로 있다.
+`interval`도 더 이상 에코백하지 않는다 — 자유 형식 파싱을 닫힌 집합(`5m/15m/30m/1h/2h/6h/12h/1d`)으로
+좁혀 서버가 값을 정규화할 일 자체가 없어졌기 때문이다.
+
+### E5. `/events`에 `truncated` 추가
+
+기존엔 200개 상한에서 조용히 잘렸다. `{items, truncated}`로 잘림 여부를 드러낸다.
+
+### E6. `location`의 404를 두 가지로 분리
+
+기기가 없는 것(`device_not_found`)과 좌표를 아직 못 받은 것(`location_unavailable`)은 다른 사건이다.
+상태 코드는 둘 다 404로 유지하고, `error` 코드로 구분한다.
+
+---
+
 ## 반영 상태
 
 | 항목 | 상태 |
@@ -157,3 +200,4 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 | A5 응답 평탄화 | ✅ 구현 완료 — `range`·`peaks`·`current` 포장 제거, `devZ`→`value`, 클라 계산 가능 필드 제거 |
 | B1~B3 | **앱 팀 회신 대기** — 회신 전까지 서버는 노드 판정 전제로 진행 |
 | C1~C2 | **임베디드 팀 조정 대기** — 서버는 nullable로 받아 영향 차단 |
+| E1~E6 v1 계약 개편 | ✅ 구현 완료 |

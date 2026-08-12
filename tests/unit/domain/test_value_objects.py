@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.domain.frames import Coordinates
-from app.domain.value_objects import AlertState, DeviceId
+from app.domain.value_objects import AlertState, Condition, DeviceId
 
 
 class TestDeviceId:
@@ -27,6 +27,23 @@ class TestAlertState:
     )
     def test_dispatch_targets(self, state: AlertState, expected: bool) -> None:
         assert state.needs_dispatch is expected
+
+    @pytest.mark.parametrize(
+        ("conditions", "expected"),
+        [
+            (frozenset(), AlertState.NORMAL),
+            (frozenset({Condition.CO_RISE}), AlertState.WATCH),
+            (frozenset({Condition.SENSOR_FAULT}), AlertState.FAULT),
+            (frozenset({Condition.SENSOR_FAULT, Condition.SENSOR_FAULT}), AlertState.FAULT),
+            (frozenset({Condition.SENSOR_FAULT, Condition.WATER}), AlertState.WATCH),
+            (
+                frozenset({Condition.CO_RISE, Condition.H2_RISE, Condition.WATER}),
+                AlertState.WATCH,
+            ),
+        ],
+    )
+    def test_from_conditions(self, conditions: frozenset[Condition], expected: AlertState) -> None:
+        assert AlertState.from_conditions(conditions) is expected
 
 
 class TestCoordinates:
