@@ -74,6 +74,15 @@ git checkout --detach "$TARGET"
 # 건드리지 않고, 최초 배포에는 아직 없다. 롤백하면 rollback.sh가 되돌린 태그로 다시 쓴다.
 mkdir -p "$(dirname "$RELEASE_FILE")"
 printf 'APP_RELEASE=%s\n' "$TARGET" > "$RELEASE_FILE"
+
+# unit 파일은 저장소가 SSOT라고 스스로 밝힌다. 배포가 덮지 않으면 그 말이 거짓이
+# 되고, EnvironmentFile 한 줄이 Pi에 닿지 않아 /health가 계속 dev라고 답한다.
+UNIT_DST="/etc/systemd/system/$SERVICE.service"
+if ! cmp -s "$REPO_DIR/deploy/$SERVICE.service" "$UNIT_DST"; then
+    sudo cp "$REPO_DIR/deploy/$SERVICE.service" "$UNIT_DST"
+    sudo systemctl daemon-reload
+    echo "systemd unit 갱신 + daemon-reload"
+fi
 # --extra pi: spidev·gpiozero는 Pi에만 설치한다. 빼면 uv sync가 venv에서 지운다.
 # --no-dev: alembic은 런타임 의존이라 마이그레이션에 필요한 것은 다 들어온다.
 uv sync --frozen --no-dev --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
