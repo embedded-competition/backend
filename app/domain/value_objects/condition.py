@@ -10,3 +10,4 @@ class Condition(StrEnum):
     PRESSURE_RISE = "PRESSURE_RISE"
     WATER = "WATER"
     SENSOR_FAULT = "SENSOR_FAULT"
+    UNKNOWN = "UNKNOWN"

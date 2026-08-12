@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -7,6 +8,8 @@ from app.domain.exceptions import FrameFieldError
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.value_objects import AlertState, Condition, DeviceId
+
+logger = logging.getLogger(__name__)
 
 CSV_FRAME_VERSION = 0
 
@@ -83,9 +86,15 @@ def _conditions_of(alert: str) -> frozenset[Condition]:
 
 
 def _condition_of(cause: str) -> Condition:
+    """모르는 원인이라고 프레임을 버리지 않는다 — 그 순간이 가장 데이터가 필요한 순간이다.
+
+    UNKNOWN으로 흡수하고 원본 문자열을 로그로 남긴다. 매핑표에 추가해야 할 값을
+    알아야 다음 배포에서 정확한 Condition으로 승격할 수 있다.
+    """
     if cause.endswith(_SATURATED_SUFFIX):
         return Condition.SENSOR_FAULT
     found = _CONDITION_BY_CAUSE.get(cause)
     if found is None:
-        raise FrameFieldError(f"알 수 없는 ALERT 원인이다: {cause!r}")
+        logger.warning("알 수 없는 ALERT 원인이다: %r", cause, extra={"cause": cause})
+        return Condition.UNKNOWN
     return found

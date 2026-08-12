@@ -692,7 +692,8 @@
           "VOC_RISE",
           "PRESSURE_RISE",
           "WATER",
-          "SENSOR_FAULT"
+          "SENSOR_FAULT",
+          "UNKNOWN"
         ],
         "title": "Condition"
       },

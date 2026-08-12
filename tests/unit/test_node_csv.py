@@ -90,6 +90,30 @@ class TestState:
         assert frame.state is AlertState.WATCH
         assert frame.conditions == frozenset({Condition.SENSOR_FAULT, Condition.H2_RISE})
 
+    def test_unknown_cause_is_absorbed_not_rejected(self) -> None:
+        """모르는 원인이라고 프레임째 버리면 그 순간의 센서 값도 같이 사라진다.
+
+        펌웨어가 새 원인 코드를 붙이는 순간이 가장 데이터가 필요한 순간이다 —
+        그때 서버가 눈을 감으면 안 된다.
+        """
+        frame = _parser().parse(b"MQ7=1,ALERT=NEWCAUSE", _AT)
+
+        assert frame.value(Measure.CO_DEV) == 1.0
+        assert frame.conditions == frozenset({Condition.UNKNOWN})
+        assert frame.state is AlertState.WATCH
+
+    def test_unknown_cause_alongside_known_ones_keeps_both(self) -> None:
+        line = b"MQ7=1,ALERT=MQ7|NEWCAUSE"
+        frame = _parser().parse(line, _AT)
+
+        assert frame.conditions == frozenset({Condition.CO_RISE, Condition.UNKNOWN})
+
+    def test_unknown_cause_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING", logger="app.infrastructure.lora.node_csv"):
+            _parser().parse(b"MQ7=1,ALERT=NEWCAUSE", _AT)
+
+        assert "NEWCAUSE" in caplog.text
+
 
 class TestMalformed:
     def test_garbage_is_rejected(self) -> None:
@@ -106,7 +130,3 @@ class TestMalformed:
 
         assert frame.value(Measure.CO_DEV) == 10.0
         assert frame.value(Measure.H2_DEV) is None
-
-    def test_unknown_alert_cause_is_rejected(self) -> None:
-        with pytest.raises(FrameFieldError, match="UNKNOWN_CAUSE"):
-            _parser().parse(b"MQ7=1,ALERT=UNKNOWN_CAUSE", _AT)
