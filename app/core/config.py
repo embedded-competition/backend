@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "pi"]
 LoraSource = Literal["sx1276", "rylr", "fake"]
-RylrPayload = Literal["base64url", "hex", "text", "node_csv"]
+RylrPayload = Literal["hex", "text", "node_csv"]
 PushDelivery = Literal["expo", "log"]
 LogFormat = Literal["json", "text"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     rylr_baud: int = 115_200
     rylr_address: int = Field(default=1, ge=0, le=65535)
     rylr_network_id: int = Field(default=18, ge=3, le=18)
-    rylr_payload: RylrPayload = "base64url"
+    rylr_payload: RylrPayload = "hex"
     rylr_node_hw_id: str = "000000000001"
 
     fake_node_hw_id: str = "aabbccddeeff"

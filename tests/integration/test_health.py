@@ -35,7 +35,7 @@ def test_release_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> 
     """deploy.sh가 data/release.env에 쓰고 systemd가 환경변수로 넘긴다."""
     monkeypatch.setenv("APP_RELEASE", "v0.6.0")
 
-    assert Settings(_env_file=None).release == "v0.6.0"
+    assert Settings().release == "v0.6.0"
 
 
 async def test_database_component_is_ok(client: AsyncClient) -> None:
