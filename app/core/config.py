@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "pi"]
 LoraSource = Literal["sx1276", "rylr", "fake"]
-RylrPayload = Literal["hex", "text", "node_csv"]
+RylrPayload = Literal["base64url", "hex", "text", "node_csv"]
 PushDelivery = Literal["expo", "log"]
 LogFormat = Literal["json", "text"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     environment: Environment = "local"
     enable_docs: bool = True
 
+    release: str = "dev"
+    """지금 돌고 있는 배포의 태그. deploy.sh가 data/release.env에 써서 주입한다.
+
+    기본값이 "dev"인 것은 거짓말을 하지 않기 위해서다 — 주입이 없으면 태그를
+    지어내는 대신 배포본이 아니라고 말한다.
+    """
+
     log_level: LogLevel = "INFO"
     log_format: LogFormat = "text"
 
@@ -35,7 +42,7 @@ class Settings(BaseSettings):
     lora_spi_device: int = 0
     lora_reset_gpio: int = 22
     lora_frequency_hz: int = 922_000_000
-    lora_spreading_factor: int = Field(default=7, ge=6, le=12)
+    lora_spreading_factor: int = Field(default=9, ge=6, le=12)
     lora_bandwidth_hz: int = 125_000
     lora_coding_rate: int = Field(default=5, ge=5, le=8)
     lora_preamble_length: int = 8
@@ -44,7 +51,7 @@ class Settings(BaseSettings):
     rylr_baud: int = 115_200
     rylr_address: int = Field(default=1, ge=0, le=65535)
     rylr_network_id: int = Field(default=18, ge=3, le=18)
-    rylr_payload: RylrPayload = "hex"
+    rylr_payload: RylrPayload = "base64url"
     rylr_node_hw_id: str = "000000000001"
 
     fake_node_hw_id: str = "aabbccddeeff"

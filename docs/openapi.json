@@ -979,9 +979,9 @@
           "version": {
             "type": "string",
             "title": "Version",
-            "description": "앱 버전",
+            "description": "지금 돌고 있는 배포의 태그. 주입이 없으면 'dev'",
             "examples": [
-              "0.1.0"
+              "v0.6.0"
             ]
           },
           "revision": {

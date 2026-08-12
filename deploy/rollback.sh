@@ -41,6 +41,8 @@ sudo systemctl stop "$SERVICE" || true
 
 echo "== 2. 코드 되감기 =="
 git checkout --detach "$PREV_COMMIT"
+# 되돌린 뒤에도 /health가 실패한 태그를 말하면 롤백됐는지 알 수 없다.
+printf 'APP_RELEASE=%s\n' "$PREV_COMMIT" > "$REPO_DIR/data/release.env"
 uv sync --frozen --no-dev --extra pi
 
 echo "== 3. DB 복원 =="

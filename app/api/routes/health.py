@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, status
 from sqlalchemy import text
 
 from app.api.schemas.health import ComponentHealth, ComponentStatus, HealthResponse
@@ -27,7 +27,7 @@ _SEVERITY = {
     summary="구성요소별 서비스 상태",
 )
 async def health(
-    request: Request, settings: SettingsDep, session: SessionDep, state: RuntimeStateDep
+    settings: SettingsDep, session: SessionDep, state: RuntimeStateDep
 ) -> HealthResponse:
     components = {
         "process": ComponentHealth(status=ComponentStatus.OK),
@@ -38,7 +38,7 @@ async def health(
     worst = max(components.values(), key=lambda c: _SEVERITY[c.status]).status
     return HealthResponse(
         status=worst,
-        version=request.app.version,
+        version=settings.release,
         revision=state.schema_revision,
         components=components,
     )

@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from httpx import AsyncClient
+
+from app.core.config import Settings
 
 # 파일 읽기는 import 시점에 끝낸다 — async 테스트 안에서 블로킹 I/O를 하지 않는다.
 _PROBED_PATHS = re.findall(
@@ -19,7 +22,20 @@ async def test_health_returns_component_breakdown(client: AsyncClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert set(body["components"]) == {"process", "database", "lora_radio", "push"}
-    assert body["version"] == "0.1.0"
+
+
+async def test_version_says_dev_when_no_release_was_injected(client: AsyncClient) -> None:
+    """주입이 없으면 태그를 지어내지 않는다. 테스트는 배포본이 아니다."""
+    body = (await client.get("/health")).json()
+
+    assert body["version"] == "dev"
+
+
+def test_release_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """deploy.sh가 data/release.env에 쓰고 systemd가 환경변수로 넘긴다."""
+    monkeypatch.setenv("APP_RELEASE", "v0.6.0")
+
+    assert Settings(_env_file=None).release == "v0.6.0"
 
 
 async def test_database_component_is_ok(client: AsyncClient) -> None:

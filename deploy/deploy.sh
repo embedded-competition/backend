@@ -42,6 +42,7 @@ SERVICE=orca-backend
 DB_PATH="${APP_DATABASE_PATH:-$REPO_DIR/data/orca.db}"
 BACKUP_DIR="$REPO_DIR/data/backups"
 MANIFEST="$BACKUP_DIR/last-deploy.env"
+RELEASE_FILE="$REPO_DIR/data/release.env"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 cd "$REPO_DIR"
@@ -69,6 +70,10 @@ ROLLBACK_ARMED=1
 echo "== 2. 코드 동기화 =="
 git fetch --all --tags
 git checkout --detach "$TARGET"
+# /health가 무엇이 돌고 있는지 답할 수 있어야 한다. data/는 gitignore라 checkout이
+# 건드리지 않고, 최초 배포에는 아직 없다. 롤백하면 rollback.sh가 되돌린 태그로 다시 쓴다.
+mkdir -p "$(dirname "$RELEASE_FILE")"
+printf 'APP_RELEASE=%s\n' "$TARGET" > "$RELEASE_FILE"
 # --extra pi: spidev·gpiozero는 Pi에만 설치한다. 빼면 uv sync가 venv에서 지운다.
 # --no-dev: alembic은 런타임 의존이라 마이그레이션에 필요한 것은 다 들어온다.
 uv sync --frozen --no-dev --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.

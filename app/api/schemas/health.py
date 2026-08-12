@@ -27,7 +27,13 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     status: Annotated[ComponentStatus, Field(description="구성요소 중 최악값")]
-    version: Annotated[str, Field(description="앱 버전", examples=["0.1.0"])]
+    version: Annotated[
+        str,
+        Field(
+            description="지금 돌고 있는 배포의 태그. 주입이 없으면 'dev'",
+            examples=["v0.6.0"],
+        ),
+    ]
     revision: Annotated[
         str | None,
         Field(description="적용된 Alembic 리비전", examples=["a1b2c3d4e5f6"]),

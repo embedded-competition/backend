@@ -24,7 +24,10 @@ from app.runtime.state import STATE_ATTRIBUTE, ReceiverLiveness, RuntimeState
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.1.0"
+API_VERSION = "0.1.0"
+"""OpenAPI 문서에 실리는 스펙 버전. 배포마다 바뀌면 안 된다 — 바뀌면 매 배포가
+docs/openapi.json 드리프트가 된다. 지금 돌고 있는 배포를 알고 싶으면
+/health의 version(= Settings.release)을 본다."""
 
 
 def build_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
@@ -56,7 +59,7 @@ def build_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncConte
         logger.info(
             "app started",
             extra={
-                "version": VERSION,
+                "release": settings.release,
                 "environment": settings.environment,
                 "database": str(settings.database_path),
                 "schema_revision": state.schema_revision,
@@ -110,7 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Orca Backend",
         description="전동 킥보드 배터리 화재 조기감지 — LoRa 수신 + 알람 디스패치",
-        version=VERSION,
+        version=API_VERSION,
         lifespan=build_lifespan(settings),
         docs_url="/docs" if settings.enable_docs else None,
         redoc_url="/redoc" if settings.enable_docs else None,
