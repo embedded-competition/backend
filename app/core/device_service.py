@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from app.core import identity
-from app.core.device_profile import DeviceProfile
+from app.core.module_status import ModuleStatus
 from app.domain.device import Device
 from app.domain.exceptions import DeviceNotFound
 from app.domain.module_health import LinkQuality, SensorCheck
@@ -23,12 +23,9 @@ class DeviceService:
     clock: Clock
     offline_after_s: int
 
-    def profile(self, device: Device) -> DeviceProfile:
+    def module_status(self, device: Device) -> ModuleStatus:
         reading = self.readings.latest(device.key)
-        return DeviceProfile(
-            mac=device.mac,
-            label=device.label,
-            parking_slot=device.parking_slot,
+        return ModuleStatus(
             battery=None,
             link=LinkQuality.of(
                 rssi=reading.radio.rssi if reading else None,
@@ -37,7 +34,6 @@ class DeviceService:
                 offline_after=timedelta(seconds=self.offline_after_s),
             ),
             sensor_check=SensorCheck.of(reading.conditions if reading else None),
-            last_seen_at=device.last_seen_at,
         )
 
     def get_by_mac(self, raw_mac: str) -> Device:

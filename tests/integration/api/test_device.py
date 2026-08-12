@@ -1,4 +1,4 @@
-"""GET /v1/devices/{mac} — 설정 화면이 쓰는 기기 정보와 모듈 상태."""
+"""GET /v1/devices/{mac} — 설정 화면이 쓰는 감지 모듈 자기진단."""
 
 from __future__ import annotations
 
@@ -15,20 +15,12 @@ from tests.builders import a_frame
 from tests.integration.api.client import UNKNOWN_MAC, SeededDevice
 
 
-class TestDeviceProfile:
-    async def test_reports_identity_without_telemetry_values(self, device: SeededDevice) -> None:
-        """측정값은 여기 없다 — 주기가 다른 것을 같이 담지 않는다."""
+class TestModuleStatus:
+    async def test_carries_verdicts_only(self, device: SeededDevice) -> None:
+        """근거값을 내보내면 앱이 그 값으로 다시 판정할 수 있게 된다."""
         payload = (await _profile(device)).json()
 
-        assert set(payload) == {
-            "mac",
-            "label",
-            "parkingSlot",
-            "battery",
-            "link",
-            "sensorCheck",
-            "lastSeenAt",
-        }
+        assert set(payload) == {"battery", "link", "sensorCheck"}
 
     async def test_battery_is_null_until_the_node_sends_voltage(self, device: SeededDevice) -> None:
         assert (await _profile(device)).json()["battery"] is None

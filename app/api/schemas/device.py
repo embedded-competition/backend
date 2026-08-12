@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.base import ApiModel
-from app.core.device_profile import DeviceProfile
+from app.core.module_status import ModuleStatus
 from app.domain.module_health import BatteryLevel, LinkQuality, SensorCheck
 
 
@@ -39,10 +38,13 @@ class BatteryResponse(ApiModel):
         return cls(percent=battery.percent, days_left=battery.days_left)
 
 
-class DeviceResponse(ApiModel):
-    mac: Annotated[str, Field(examples=["AA:BB:CC:DD:EE:FF"])]
-    label: Annotated[str, Field(examples=["내 킥보드"])]
-    parking_slot: Annotated[str | None, Field(examples=["B2-01"])] = None
+class ModuleStatusResponse(ApiModel):
+    """감지 모듈 자기진단. 전부 서버가 판정한 결과다.
+
+    근거값(전압·dBm·마지막 수신 시각)은 담지 않는다 — 내보내면 앱이 그 값으로 다시
+    판정할 수 있게 되고 임계가 두 곳에 생긴다.
+    """
+
     battery: Annotated[
         BatteryResponse | None,
         Field(description="감지 모듈 배터리. 노드가 전압을 보내기 전까지 null"),
@@ -55,18 +57,11 @@ class DeviceResponse(ApiModel):
         SensorCheck | None,
         Field(description="센서 점검 결과. 관측이 없으면 null"),
     ] = None
-    last_seen_at: Annotated[
-        datetime | None, Field(description="마지막으로 프레임을 받은 시각 (UTC)")
-    ] = None
 
     @classmethod
-    def from_domain(cls, profile: DeviceProfile) -> DeviceResponse:
+    def from_domain(cls, status: ModuleStatus) -> ModuleStatusResponse:
         return cls(
-            mac=profile.mac,
-            label=profile.label,
-            parking_slot=profile.parking_slot,
-            battery=BatteryResponse.from_domain(profile.battery) if profile.battery else None,
-            link=profile.link,
-            sensor_check=profile.sensor_check,
-            last_seen_at=profile.last_seen_at,
+            battery=BatteryResponse.from_domain(status.battery) if status.battery else None,
+            link=status.link,
+            sensor_check=status.sensor_check,
         )

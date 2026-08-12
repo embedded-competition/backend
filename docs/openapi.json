@@ -32,9 +32,9 @@
         "tags": [
           "devices"
         ],
-        "summary": "기기 정보 + 모듈 상태 (설정 화면)",
-        "description": "텔레메트리와 주기가 다르다 — 여기 담긴 것은 거의 바뀌지 않는다. 배터리·연결·센서 점검은 서버가 판정한 결과이고, 문장으로 만드는 것은 앱 몫이다.",
-        "operationId": "get_device_v1_devices__mac__get",
+        "summary": "감지 모듈 자기진단 (설정 화면)",
+        "description": "텔레메트리와 주기가 다르다 — 여기 담긴 것은 거의 바뀌지 않는다. 셋 다 서버가 판정한 결과이고, 문장으로 만드는 것은 앱 몫이다.",
+        "operationId": "get_module_status_v1_devices__mac__get",
         "parameters": [
           {
             "name": "mac",
@@ -59,7 +59,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceResponse"
+                  "$ref": "#/components/schemas/ModuleStatusResponse"
                 }
               }
             }
@@ -949,90 +949,6 @@
         ],
         "title": "DeviceCurrentResponse"
       },
-      "DeviceResponse": {
-        "properties": {
-          "mac": {
-            "type": "string",
-            "title": "Mac",
-            "examples": [
-              "AA:BB:CC:DD:EE:FF"
-            ]
-          },
-          "label": {
-            "type": "string",
-            "title": "Label",
-            "examples": [
-              "내 킥보드"
-            ]
-          },
-          "parkingSlot": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parkingslot",
-            "examples": [
-              "B2-01"
-            ]
-          },
-          "battery": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BatteryResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "감지 모듈 배터리. 노드가 전압을 보내기 전까지 null"
-          },
-          "link": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LinkQuality"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "연결 상태. 한 번도 받은 적 없으면 null"
-          },
-          "sensorCheck": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SensorCheck"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "센서 점검 결과. 관측이 없으면 null"
-          },
-          "lastSeenAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastseenat",
-            "description": "마지막으로 프레임을 받은 시각 (UTC)"
-          }
-        },
-        "type": "object",
-        "required": [
-          "mac",
-          "label"
-        ],
-        "title": "DeviceResponse"
-      },
       "DeviceStatus": {
         "type": "string",
         "enum": [
@@ -1234,6 +1150,46 @@
           "at"
         ],
         "title": "LocationResponse"
+      },
+      "ModuleStatusResponse": {
+        "properties": {
+          "battery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatteryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "감지 모듈 배터리. 노드가 전압을 보내기 전까지 null"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkQuality"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "연결 상태. 한 번도 받은 적 없으면 null"
+          },
+          "sensorCheck": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorCheck"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "센서 점검 결과. 관측이 없으면 null"
+          }
+        },
+        "type": "object",
+        "title": "ModuleStatusResponse",
+        "description": "감지 모듈 자기진단. 전부 서버가 판정한 결과다.\n\n근거값(전압·dBm·마지막 수신 시각)은 담지 않는다 — 내보내면 앱이 그 값으로 다시\n판정할 수 있게 되고 임계가 두 곳에 생긴다."
       },
       "PeakChannelResponse": {
         "properties": {
