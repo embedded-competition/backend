@@ -1,4 +1,4 @@
-"""GET /v1/devices/{mac} — 설정 화면이 쓰는 감지 모듈 자기진단."""
+"""GET /v1/devices/{mac} — 설정 화면이 쓰는 센서 점검 결과."""
 
 from __future__ import annotations
 
@@ -15,39 +15,29 @@ from tests.builders import a_frame
 from tests.integration.api.client import UNKNOWN_MAC, SeededDevice
 
 
-class TestModuleStatus:
-    async def test_carries_verdicts_only(self, device: SeededDevice) -> None:
-        """근거값을 내보내면 앱이 그 값으로 다시 판정할 수 있게 된다."""
+class TestSensorCheck:
+    async def test_carries_the_verdict_only(self, device: SeededDevice) -> None:
         payload = (await _profile(device)).json()
 
-        assert set(payload) == {"battery", "link", "sensorCheck"}
+        assert set(payload) == {"sensorCheck"}
 
-    async def test_battery_is_null_until_the_node_sends_voltage(self, device: SeededDevice) -> None:
-        assert (await _profile(device)).json()["battery"] is None
+    async def test_no_observation_is_unknown(self, device: SeededDevice) -> None:
+        """점검한 적 없는 것과 이상 없는 것은 다르다."""
+        assert (await _profile(device)).json()["sensorCheck"] is None
 
-    async def test_never_heard_from_reports_unknown_link(self, device: SeededDevice) -> None:
-        """끊긴 것과 아직 안 온 것은 다르다."""
-        payload = (await _profile(device)).json()
-
-        assert payload["link"] is None
-        assert payload["sensorCheck"] is None
-
-    async def test_strong_recent_frame_is_a_good_link(
+    async def test_rising_values_do_not_blame_the_sensor(
         self, device: SeededDevice, session: Session, device_id: int
     ) -> None:
-        _observe(session, device_id, rssi=-42, silent_for=timedelta(minutes=1))
+        """값이 오르는 것은 센서가 멀쩡하다는 뜻이다."""
+        _observe(
+            session,
+            device_id,
+            silent_for=timedelta(minutes=1),
+            conditions=frozenset({Condition.CO_RISE, Condition.WATER}),
+            state=AlertState.WATCH,
+        )
 
-        payload = (await _profile(device)).json()
-
-        assert payload["link"] == "GOOD"
-        assert payload["sensorCheck"] == "OK"
-
-    async def test_silence_beats_signal_strength(
-        self, device: SeededDevice, session: Session, device_id: int
-    ) -> None:
-        _observe(session, device_id, rssi=-30, silent_for=timedelta(days=1))
-
-        assert (await _profile(device)).json()["link"] == "OFFLINE"
+        assert (await _profile(device)).json()["sensorCheck"] == "OK"
 
     async def test_saturated_sensor_needs_service(
         self, device: SeededDevice, session: Session, device_id: int
@@ -55,7 +45,6 @@ class TestModuleStatus:
         _observe(
             session,
             device_id,
-            rssi=-42,
             silent_for=timedelta(minutes=1),
             conditions=frozenset({Condition.SENSOR_FAULT}),
             state=AlertState.FAULT,
@@ -74,7 +63,6 @@ def _observe(
     session: Session,
     device_id: int,
     *,
-    rssi: int,
     silent_for: timedelta,
     conditions: frozenset[Condition] = frozenset(),
     state: AlertState = AlertState.NORMAL,
@@ -85,7 +73,7 @@ def _observe(
             device_id=device_id,
             frame=a_frame(at, seq=1, state=state, conditions=conditions),
             received_at=at,
-            radio=RadioQuality(rssi=rssi, snr=9.0),
+            radio=RadioQuality(rssi=-42, snr=9.0),
         )
     )
     devices = SqlAlchemyDeviceRepository(session)
