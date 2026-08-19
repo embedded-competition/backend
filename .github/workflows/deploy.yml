@@ -42,6 +42,40 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
 
+      # 시크릿이 비어 있으면 Pi에 이미 있는 .env를 그대로 쓴다 — 이 경로를 켜기
+      # 전과 같은 동작이라, 결정을 되돌리는 데 코드 변경이 필요 없다.
+      - name: .env 배치
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          APP_ENV_FILE: ${{ secrets.APP_ENV_FILE }}
+        run: |
+          if [ -z "$APP_ENV_FILE" ]; then
+            echo "APP_ENV_FILE 없음 — Pi의 .env를 그대로 쓴다"
+            exit 0
+          fi
+          # 통째로 덮는 파일이다. 잘린 내용을 받으면 빠진 키가 기본값으로 조용히
+          # 떨어진다 — APP_PUSH_DELIVERY 한 줄이 사라지면 푸시가 로그로만 간다.
+          # 파일이 온전한지 값싸게 확인할 수 있는 두 가지만 본다.
+          printf '%s\n' "$APP_ENV_FILE" | grep -q '^APP_ENVIRONMENT=' || {
+            echo "APP_ENVIRONMENT가 없다 — 잘린 내용으로 .env를 덮지 않는다"; exit 1
+          }
+          lines=$(printf '%s\n' "$APP_ENV_FILE" | grep -cE '^APP_[A-Z_]+=')
+          echo "APP_ENV_FILE: 키 ${lines}개"
+          [ "$lines" -ge 10 ] || { echo "키가 너무 적다 — 잘린 내용으로 보인다"; exit 1; }
+          # 내용은 stdin으로만 보낸다. 명령줄에 실으면 Pi의 ps에 그대로 보인다.
+          printf '%s\n' "$APP_ENV_FILE" | ssh \
+            -o ProxyCommand="cloudflared access ssh --hostname %h \
+                  --service-token-id $CF_ACCESS_CLIENT_ID \
+                  --service-token-secret $CF_ACCESS_CLIENT_SECRET" \
+            -o ConnectTimeout=30 \
+            "user@$DEPLOY_HOST" \
+            'umask 077 && mkdir -p ~/backend/data/backups \
+             && cp -f ~/backend/.env ~/backend/data/backups/env.prev 2>/dev/null || true; \
+             cat > ~/backend/.env.incoming && mv ~/backend/.env.incoming ~/backend/.env \
+             && echo ".env 배치 완료"'
+
       # deploy.sh가 SSOT다. 여기서 배포 절차를 다시 쓰지 않는다.
       # 실패하면 deploy.sh가 스스로 롤백하고 0이 아닌 코드로 끝난다.
       - name: 배포

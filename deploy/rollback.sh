@@ -45,7 +45,18 @@ git checkout --detach "$PREV_COMMIT"
 printf 'APP_RELEASE=%s\n' "$PREV_COMMIT" > "$REPO_DIR/data/release.env"
 uv sync --frozen --no-dev --extra pi
 
-echo "== 3. DB 복원 =="
+echo "== 3. 설정 복원 =="
+# 코드만 되감으면 새 .env와 옛 코드가 남는다. 없어진 키·새로 생긴 키 어느 쪽이든
+# 다음 기동을 막으므로, 설정도 코드와 같이 되돌린다.
+ENV_BACKUP="$REPO_DIR/data/backups/env.prev"
+if [ -f "$ENV_BACKUP" ]; then
+    cp -f "$ENV_BACKUP" "$REPO_DIR/.env"
+    echo "직전 .env로 되돌렸다"
+else
+    echo ".env 백업 없음 — 손대지 않는다"
+fi
+
+echo "== 4. DB 복원 =="
 if [ -n "${BACKUP_STAMP:-}" ]; then
     for suffix in "" "-wal" "-shm"; do
         source_file="$BACKUP_DIR/$(basename "$DB_PATH")${suffix}.$BACKUP_STAMP"
@@ -62,7 +73,7 @@ else
     echo "백업 없음 — 코드만 되감는다 (백업 전에 실패한 경우)"
 fi
 
-echo "== 4. 기동 =="
+echo "== 5. 기동 =="
 sudo systemctl start "$SERVICE"
 
 READY_TIMEOUT_S=90
