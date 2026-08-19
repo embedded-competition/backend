@@ -10,3 +10,17 @@
 | 20 | 4 | `lon` | float32 | ±180 | 미장착 |
 | 24 | 2 | `crc` | uint16 | — | CRC-16/CCITT-FALSE, 대상 0~23 |
 | — | **26** | **합계** | | | base64url **35자** |
+
+## 무선 파라미터는 노드와 글자 그대로 같아야 한다
+
+노드 펌웨어(`embedded/main/hello_world_main.c`)가 모듈에 거는 값이 기준이다.
+
+| 항목 | 노드 AT 명령 | 서버 설정 |
+|---|---|---|
+| 대역 | `AT+BAND=922100000` | `APP_LORA_FREQUENCY_HZ=922100000` |
+| 네트워크 | `AT+NETWORKID=18` | `APP_RYLR_NETWORK_ID=18` |
+| 주소 | 노드 `AT+ADDRESS=1`, 수신처 2 | `APP_RYLR_ADDRESS=2` |
+| SF·BW·CR·프리앰블 | `AT+PARAMETER=9,7,1,12` | SF 9 / 125kHz / CR 5 / 프리앰블 **12** |
+
+프리앰블이 어긋나면 수신이 0이 된다. 에러가 아니라 무음이라 로그에 아무 흔적이
+남지 않는다 — 실제로 v0.6.9까지 서버가 8을 걸고 있었고, 그동안 한 장도 못 받았다.

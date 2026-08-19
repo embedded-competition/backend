@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     lora_spreading_factor: int = Field(default=9, ge=6, le=12)
     lora_bandwidth_hz: int = 125_000
     lora_coding_rate: int = Field(default=5, ge=5, le=8)
-    lora_preamble_length: int = 8
+    lora_preamble_length: int = 12
     lora_sync_word: int = 0x12
     rylr_port: str = "/dev/ttyUSB0"
     rylr_baud: int = 115_200
