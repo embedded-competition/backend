@@ -221,6 +221,14 @@ __marimo__/
 data/
 .env
 
+# 비밀 — 이 저장소는 public이다. 커밋되면 그 순간 유출이다
+secrets/
+*.serviceaccount.json
+firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
+*.p8
+
 # mutmut 작업 디렉터리
 mutants/
 .mutmut-cache
