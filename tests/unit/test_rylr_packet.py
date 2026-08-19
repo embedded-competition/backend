@@ -31,6 +31,30 @@ class TestHexPayload:
             parse_packet("+RCV=1,5,HELLO,-70,7", "hex")
 
 
+class TestBase64UrlPayload:
+    """계약 기본 인코딩. 34바이트 프레임이 hex 68자 대신 46자로 실린다."""
+
+    def test_padding_is_not_required(self) -> None:
+        """노드는 `=`를 떼고 보낸다 — 길이는 프레임 자신이 안다."""
+        packet = parse_packet("+RCV=1,3,3q0,-70,7", "base64url")
+
+        assert packet.payload == bytes.fromhex("DEAD")
+
+    def test_urlsafe_alphabet_is_accepted(self) -> None:
+        """`+`·`/`는 AT 파서와 충돌한다. `-`·`_`를 쓰는 이유다."""
+        assert parse_packet("+RCV=1,4,----,-70,7", "base64url").payload == bytes.fromhex("FBEFBE")
+        assert parse_packet("+RCV=1,4,____,-70,7", "base64url").payload == bytes.fromhex("FFFFFF")
+
+    def test_standard_alphabet_is_rejected(self) -> None:
+        """`+`가 섞였다는 건 인코딩이 계약과 다르다는 뜻이다. 조용히 받지 않는다."""
+        with pytest.raises(FrameError):
+            parse_packet("+RCV=1,4,++++,-70,7", "base64url")
+
+    def test_non_base64_payload_is_rejected(self) -> None:
+        with pytest.raises(FrameError):
+            parse_packet("+RCV=1,5,HE!LO,-70,7", "base64url")
+
+
 class TestTextPayload:
     def test_payload_stays_raw(self) -> None:
         packet = parse_packet("+RCV=1,5,HELLO,-70,7", "text")

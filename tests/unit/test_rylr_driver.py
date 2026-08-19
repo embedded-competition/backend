@@ -90,7 +90,8 @@ class TestConfigTranslation:
 
 class TestPoll:
     def test_returns_frame_on_receive(self) -> None:
-        port = FakeAtPort(["+RCV=1,4,DEAD,-70,7"])
+        """계약 기본 인코딩은 base64url이다 — 설정을 안 넘기면 그것으로 읽는다."""
+        port = FakeAtPort(["+RCV=1,3,3q0,-70,7"])
 
         packet = RylrDriver(port, _config()).poll()
 

@@ -6,8 +6,8 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "pi"]
-LoraSource = Literal["sx1276", "rylr", "fake"]
-RylrPayload = Literal["hex", "text", "node_csv"]
+LoraSource = Literal["sx1276", "rylr", "none"]
+RylrPayload = Literal["base64url", "hex", "text", "node_csv"]
 PushDelivery = Literal["expo", "log"]
 LogFormat = Literal["json", "text"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -37,11 +37,11 @@ class Settings(BaseSettings):
     sqlite_busy_timeout_ms: int = 5_000
 
     lora_enabled: bool = True
-    lora_source: LoraSource = "fake"
+    lora_source: LoraSource = "none"
     lora_spi_bus: int = 0
     lora_spi_device: int = 0
     lora_reset_gpio: int = 22
-    lora_frequency_hz: int = 922_000_000
+    lora_frequency_hz: int = 922_100_000
     lora_spreading_factor: int = Field(default=9, ge=6, le=12)
     lora_bandwidth_hz: int = 125_000
     lora_coding_rate: int = Field(default=5, ge=5, le=8)
@@ -49,13 +49,10 @@ class Settings(BaseSettings):
     lora_sync_word: int = 0x12
     rylr_port: str = "/dev/ttyUSB0"
     rylr_baud: int = 115_200
-    rylr_address: int = Field(default=1, ge=0, le=65535)
+    rylr_address: int = Field(default=2, ge=0, le=65535)
     rylr_network_id: int = Field(default=18, ge=3, le=18)
-    rylr_payload: RylrPayload = "hex"
+    rylr_payload: RylrPayload = "base64url"
     rylr_node_hw_id: str = "000000000001"
-
-    fake_node_hw_id: str = "aabbccddeeff"
-    fake_interval_s: float = 3.0
 
     management_phone: str | None = None
 
@@ -67,6 +64,11 @@ class Settings(BaseSettings):
     push_max_attempts: int = 3
 
     cors_allow_origins: tuple[str, ...] = ()
+
+    @property
+    def radio_enabled(self) -> bool:
+        """무선 수신 경로가 서는가. 시뮬레이터는 여기 들지 않는다 — 늘 따로 돈다."""
+        return self.lora_enabled and self.lora_source != "none"
 
     @property
     def offline_threshold_s(self) -> int:

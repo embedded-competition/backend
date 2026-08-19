@@ -32,8 +32,9 @@ from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepositor
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
 from app.infrastructure.db.session import create_db_engine, create_session_factory
+from app.simulation import TEST_MAC_PREFIX
 
-DEMO_MAC_PREFIX = "00:00:00:00:00:"
+DEMO_MAC_PREFIX = TEST_MAC_PREFIX
 
 _FRAME_VERSION = 0
 _HISTORY = timedelta(hours=48)

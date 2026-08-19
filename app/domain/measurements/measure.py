@@ -15,3 +15,4 @@ class Measure(StrEnum):
     D_RH_DT = "d_rh_dt"
     PRESSURE_DEV = "pressure_dev"
     PRESSURE_RATE = "pressure_rate"
+    WATER_LEVEL = "water_level"

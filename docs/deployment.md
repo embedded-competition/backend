@@ -19,7 +19,7 @@ Pi 최초 셋업 명령은 [cloudflare-setup.md](cloudflare-setup.md), 장소를
 | 인그레스 | Cloudflare Tunnel (보유 도메인 서브도메인) | 아래 D2 |
 | 배포 트리거 | semver 태그 push | 아래 D4 |
 | 배포 경로 | Actions → SSH over Cloudflare Access | 아래 D3 |
-| 스테이징 | 없음. 로컬 `lora_source=fake`가 대체 | 아래 D8 |
+| 스테이징 | 없음. 상시 가동 시뮬레이터가 대체 | 아래 D8 |
 | 비밀 | Pi의 `.env` (systemd `EnvironmentFile`). Actions는 안 만짐 | 아래 D6 |
 
 ## 전체 흐름
@@ -190,10 +190,12 @@ Pi가 1대뿐이고 두 번째를 두는 비용이 얻는 것보다 크다. 대�
 | 층 | 수단 | 검증 범위 |
 |---|---|---|
 | CI | `make check` + contract + `--no-dev` boot | 코드·계약·의존성 |
-| 로컬 | `APP_LORA_SOURCE=fake` | 수신→저장→전이→디스패치 전 경로 |
+| 로컬·운영 | 상시 가동 시뮬레이터 | 수신→저장→전이→디스패치 전 경로 |
 
-`fake` 소스는 실제 바이트를 만들어 파서를 그대로 태운다. 파서를 우회하지 않으므로 로컬에서
-통과한 코드가 실기기에서 깨질 여지를 줄인다. 남는 위험은 하드웨어 경계(SPI·GPIO·전파)뿐이고,
+시뮬레이터는 설정 없이 늘 떠 있고 무선 수신기와 나란히 돈다. 실제 바이트를 만들어 파서를
+그대로 태우고, 노드가 하는 판정까지 흉내낸다. 운영에서도 켜져 있으므로 실기기 없이 앱
+화면을 확인하는 일이 배포 후에도 가능하다. 흐름을 손으로 조절하는 방법은
+[simulation.md](simulation.md)에 있다. 남는 위험은 하드웨어 경계(SPI·GPIO·전파)뿐이고,
 그건 어떤 스테이징으로도 못 덮는다.
 
 ### D9. 롤백은 태그 되감기 + DB 파일 복원
@@ -266,7 +268,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now orca-backend
 기동에 약 9초가 걸린다. 그 전에 헬스체크를 치면 연결 거부가 뜬다.
 
 SX1276을 아직 안 붙였으면 `/dev/spidev*`가 없다. `raspi-config`로 SPI를 켜기 전에는
-`APP_LORA_SOURCE=fake`로 둔다 — 배포 경로와 하드웨어를 분리해 검증한다(D8과 같은 이유).
+`APP_LORA_SOURCE=none`으로 둔다 — 배포 경로와 하드웨어를 분리해 검증한다(D8과 같은 이유).
+시뮬레이터는 이 값과 무관하게 돌므로 그 상태로도 앱 화면 전체를 확인할 수 있다.
 
 ### 2. 터널·Access·배포 키
 

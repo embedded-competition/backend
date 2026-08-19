@@ -84,6 +84,7 @@ class ReadingOrm(Base):
     d_rh_dt: Mapped[float | None] = mapped_column(default=None)
     pressure_dev: Mapped[float | None] = mapped_column(default=None)
     pressure_rate: Mapped[float | None] = mapped_column(default=None)
+    water_level: Mapped[float | None] = mapped_column(default=None)
     water: Mapped[bool | None] = mapped_column(default=None)
 
     batt_mv: Mapped[int | None] = mapped_column(default=None)

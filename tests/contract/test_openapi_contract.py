@@ -22,7 +22,7 @@ _SETTINGS = Settings(
     environment="local",
     database_path=_WORKSPACE / "contract.db",
     lora_enabled=False,
-    lora_source="fake",
+    lora_source="none",
     push_delivery="log",
 )
 _APP = create_app(_SETTINGS)

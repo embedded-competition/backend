@@ -48,7 +48,7 @@ def a_device(
 def a_frame(
     measured_at: datetime,
     *,
-    version: int = 1,
+    version: int = 2,
     seq: int = 1,
     state: AlertState = AlertState.NORMAL,
     conditions: frozenset[Condition] = frozenset(),

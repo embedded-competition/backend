@@ -25,7 +25,7 @@ def settings(tmp_path: Path) -> Settings:
         environment="local",
         database_path=tmp_path / "test.db",
         lora_enabled=False,
-        lora_source="fake",
+        lora_source="none",
         push_delivery="log",
         management_phone="01029015899",
     )

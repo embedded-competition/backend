@@ -10,23 +10,13 @@ from app.infrastructure.lora.node_csv import NodeCsvParser
 from app.infrastructure.lora.radio import Sx1276FrameSource
 from app.infrastructure.lora.registers import RadioConfig
 from app.infrastructure.lora.rylr import RylrConfig, RylrFrameSource
-from app.infrastructure.lora.scenario import ScenarioFrameFactory
-from app.infrastructure.lora.sources import FakeFrameSource
 from app.runtime.receiver import parse_wire_frame
 
 logger = logging.getLogger(__name__)
 
 
 def create_frame_source(settings: Settings) -> FrameSource:
-    if settings.lora_source == "fake":
-        logger.info(
-            "lora fake source",
-            extra={"hw_id": settings.fake_node_hw_id, "interval_s": settings.fake_interval_s},
-        )
-        return FakeFrameSource(
-            ScenarioFrameFactory(settings.fake_node_hw_id),
-            interval_s=settings.fake_interval_s,
-        )
+    """무선 어댑터만 고른다. `radio_enabled`가 거짓이면 호출되지 않는다."""
     if settings.lora_source == "rylr":
         return RylrFrameSource(rylr_config(settings))
     return Sx1276FrameSource(radio_config(settings))

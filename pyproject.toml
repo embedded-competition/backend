@@ -285,6 +285,14 @@ modules = [
 ]
 
 [[tool.importlinter.contracts]]
+# 시뮬레이터는 테스트 도구다. 제품 경로가 그것을 알기 시작하면 "테스트일 때만"
+# 분기가 제품 코드에 퍼진다. 아는 자리는 조립부(runtime)와 main뿐이다.
+name = "제품 경로는 시뮬레이터를 모른다"
+type = "forbidden"
+source_modules = ["app.api", "app.core", "app.domain", "app.infrastructure"]
+forbidden_modules = ["app.simulation"]
+
+[[tool.importlinter.contracts]]
 name = "하드웨어·외부 SDK는 전용 어댑터에만"
 type = "forbidden"
 # 조립부(runtime)는 어댑터를 import하므로 전이적으로 걸린다 — 제외한다.

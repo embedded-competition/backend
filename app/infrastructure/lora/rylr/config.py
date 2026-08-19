@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-PayloadEncoding = Literal["hex", "text", "node_csv"]
+PayloadEncoding = Literal["base64url", "hex", "text", "node_csv"]
 
 _BANDWIDTH_CODES = {125_000: 7, 250_000: 8, 500_000: 9}
 _LOWEST_CODING_RATE = 5
@@ -20,7 +20,7 @@ class RylrConfig:
     bandwidth_hz: int
     coding_rate: int
     preamble_length: int
-    payload: PayloadEncoding = "hex"
+    payload: PayloadEncoding = "base64url"
     read_timeout_s: float = 1.0
     command_timeout_s: float = 2.0
 

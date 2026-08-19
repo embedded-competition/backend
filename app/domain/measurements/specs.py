@@ -18,6 +18,7 @@ SPECS: dict[Measure, MeasureSpec] = {
     Measure.D_RH_DT: MeasureSpec("%RH/min"),
     Measure.PRESSURE_DEV: MeasureSpec("z"),
     Measure.PRESSURE_RATE: MeasureSpec("z/min"),
+    Measure.WATER_LEVEL: MeasureSpec("‰", minimum=0.0, maximum=1000.0),
 }
 
 ORDER: tuple[Measure, ...] = tuple(SPECS)

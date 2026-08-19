@@ -19,7 +19,7 @@ from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
 from app.infrastructure.db.repositories.events import SqlAlchemyEventRepository
 from app.infrastructure.db.repositories.readings import SqlAlchemyReadingRepository
-from app.infrastructure.lora.codec import FRAME_VERSION
+from app.infrastructure.lora.frame import WIRE_FORMAT_ID
 
 HW_ID = "aabbccddeeff"
 MAC = "AA:BB:CC:DD:EE:FF"
@@ -48,7 +48,7 @@ def registered(session: Session, now: datetime) -> Device:
 
 def _frame(seq: int, state: AlertState, at: datetime) -> TelemetryFrame:
     return TelemetryFrame(
-        version=FRAME_VERSION,
+        version=WIRE_FORMAT_ID,
         hw_id=DeviceId(HW_ID),
         seq=seq,
         measured_at=at,

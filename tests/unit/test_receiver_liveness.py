@@ -17,10 +17,10 @@ _NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 class TestSilence:
     def test_never_received_has_no_silence_measure(self) -> None:
         """한 번도 못 받은 것과 '방금 받았다'를 0초로 뭉개지 않는다."""
-        assert ReceiverLiveness(enabled=True).silence_s(_NOW) is None
+        assert ReceiverLiveness(label="lora", enabled=True).silence_s(_NOW) is None
 
     def test_silence_is_measured_from_last_frame(self) -> None:
-        liveness = ReceiverLiveness(enabled=True)
+        liveness = ReceiverLiveness(label="lora", enabled=True)
         liveness.observe(_NOW - timedelta(seconds=42))
 
         assert liveness.silence_s(_NOW) == 42.0
@@ -35,7 +35,7 @@ class TestStop:
             started.set()
             await asyncio.Event().wait()
 
-        liveness = ReceiverLiveness(enabled=True, task=asyncio.create_task(forever()))
+        liveness = ReceiverLiveness(label="lora", enabled=True, task=asyncio.create_task(forever()))
         await started.wait()
 
         await liveness.stop()
@@ -45,7 +45,7 @@ class TestStop:
 
     async def test_stopping_without_a_task_is_allowed(self) -> None:
         """lora_enabled=false로 뜬 프로세스도 같은 종료 경로를 탄다."""
-        liveness = ReceiverLiveness(enabled=False)
+        liveness = ReceiverLiveness(label="lora", enabled=False)
 
         await liveness.stop()
 

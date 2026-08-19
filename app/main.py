@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from alembic.runtime.migration import MigrationContext
 from fastapi import FastAPI
@@ -14,13 +15,16 @@ from sqlalchemy import Engine
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routes import alerts, devices, health, telemetry
 from app.core.config import Settings, get_settings
-from app.domain.ports.frame_source import RawFrame
+from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.db.session import create_db_engine, create_session_factory
 from app.runtime import wiring
 from app.runtime.log_config import configure_logging
 from app.runtime.lora import create_frame_parser, create_frame_source
-from app.runtime.receiver import FrameReceiver
+from app.runtime.receiver import FrameParser, FrameReceiver
 from app.runtime.state import STATE_ATTRIBUTE, ReceiverLiveness, RuntimeState
+from app.simulation import NodeSimulator, decode_simulated_payload
+from app.simulation.routes import STATE_ATTRIBUTE as SIMULATOR_ATTRIBUTE
+from app.simulation.routes import router as simulation_router
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +50,19 @@ def build_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncConte
             session_factory=create_session_factory(engine),
             settings=settings,
             schema_revision=_schema_revision(engine),
-            lora=ReceiverLiveness(enabled=settings.lora_enabled),
+            lora=ReceiverLiveness(label="lora", enabled=settings.radio_enabled),
         )
         setattr(app.state, STATE_ATTRIBUTE, state)
 
-        receiver: FrameReceiver | None = None
-        if settings.lora_enabled:
-            receiver = _build_receiver(state, settings)
-            state.lora.task = asyncio.create_task(receiver.run(), name="lora-receiver")
-            state.lora.task.add_done_callback(_log_receiver_death)
+        simulator = NodeSimulator.always_on()
+        setattr(app.state, SIMULATOR_ATTRIBUTE, simulator)
+        simulation = _simulation_receiver(state, settings, simulator)
+        _start(state.simulation, simulation.run(), name="simulation-receiver")
+
+        radio: FrameReceiver | None = None
+        if settings.radio_enabled:
+            radio = _radio_receiver(state, settings)
+            _start(state.lora, radio.run(), name="lora-receiver")
 
         logger.info(
             "app started",
@@ -64,17 +72,22 @@ def build_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncConte
                 "database": str(settings.database_path),
                 "schema_revision": state.schema_revision,
                 "lora_source": settings.lora_source,
+                "radio_enabled": settings.radio_enabled,
                 "push_delivery": settings.push_delivery,
             },
         )
         try:
             yield
         finally:
+            await state.simulation.stop()
             await state.lora.stop()
             engine.dispose()
             logger.info(
                 "app stopped",
-                extra=receiver.stats.as_dict() if receiver is not None else {},
+                extra={
+                    "simulation": simulation.stats.as_dict(),
+                    "radio": radio.stats.as_dict() if radio is not None else {},
+                },
             )
 
     return lifespan
@@ -85,17 +98,55 @@ def _schema_revision(engine: Engine) -> str | None:
         return MigrationContext.configure(connection).get_current_revision()
 
 
-def _build_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
+def _start(liveness: ReceiverLiveness, run: Coroutine[Any, Any, None], *, name: str) -> None:
+    liveness.task = asyncio.create_task(run, name=name)
+    liveness.task.add_done_callback(_log_receiver_death)
+
+
+def _radio_receiver(state: RuntimeState, settings: Settings) -> FrameReceiver:
+    """실기 노드를 듣는 수신기. 마지막 수신 시각이 /health의 라디오 상태가 된다."""
+    return _receiver(
+        state,
+        settings,
+        liveness=state.lora,
+        source=create_frame_source(settings),
+        parse=create_frame_parser(settings),
+    )
+
+
+def _simulation_receiver(
+    state: RuntimeState, settings: Settings, simulator: NodeSimulator
+) -> FrameReceiver:
+    """시뮬레이터를 듣는 수신기. 생존을 따로 센다 — 시뮬레이터의 틱으로 무선 침묵을
+    덮으면 /health가 죽은 라디오를 살아 있다고 답한다."""
+    return _receiver(
+        state,
+        settings,
+        liveness=state.simulation,
+        source=simulator,
+        parse=lambda raw: decode_simulated_payload(raw.payload, raw.received_at),
+    )
+
+
+def _receiver(
+    state: RuntimeState,
+    settings: Settings,
+    *,
+    liveness: ReceiverLiveness,
+    source: FrameSource,
+    parse: FrameParser,
+) -> FrameReceiver:
     def remember_last_frame(_: RawFrame) -> None:
-        state.lora.observe(datetime.now(UTC))
+        liveness.observe(datetime.now(UTC))
 
     return FrameReceiver(
-        source=create_frame_source(settings),
+        source=source,
         session_scope=wiring.session_scope_factory(state.session_factory),
         ingest_factory=wiring.ingest_factory(settings),
         notifier_factory=wiring.notifier_factory(settings, wiring.create_push_sender(settings)),
-        parse=create_frame_parser(settings),
+        parse=parse,
         on_frame=remember_last_frame,
+        label=liveness.label,
     )
 
 
@@ -134,4 +185,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(devices.router, prefix="/v1")
     app.include_router(telemetry.router, prefix="/v1")
     app.include_router(alerts.router, prefix="/v1")
+    app.include_router(simulation_router, prefix="/v1")
     return app
