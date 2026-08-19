@@ -91,6 +91,17 @@ fi
 # --no-dev: alembic은 런타임 의존이라 마이그레이션에 필요한 것은 다 들어온다.
 uv sync --frozen --no-dev --extra pi   # lock 불일치면 여기서 멈춘다. 강제로 넘기지 않는다.
 
+# .env를 새 코드로 한 번 읽어 본다. Settings는 extra="forbid"라 없어진 키가 한 줄만
+# 남아 있어도 부팅도 마이그레이션도 못 한다. 그걸 서비스를 세운 뒤에 알면, 설정 한 줄
+# 때문에 멀쩡히 돌던 서비스를 내렸다가 DB를 백업에서 되돌리는 값을 치른다.
+# 여기서 멈추면 잃는 것은 checkout뿐이다.
+if ! uv run python -c "from app.core.config import Settings; Settings()"; then
+    echo
+    echo ".env가 이 버전의 설정과 맞지 않는다 (위 오류의 키를 지우거나 고쳐라)."
+    echo "돌고 있는 서비스는 건드리지 않았다."
+    exit 1
+fi
+
 echo "== 3. 서비스 중지 + DB 백업 =="
 sudo systemctl stop "$SERVICE" || true
 mkdir -p "$BACKUP_DIR"
