@@ -1,14 +1,14 @@
-"""헬스체크 라우터."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, status
 from sqlalchemy import text
 
 from app.api.schemas.health import ComponentHealth, ComponentStatus, HealthResponse
-from app.runtime.deps import SessionDep, SettingsDep
+from app.core.config import PushDelivery
+from app.runtime.deps import RuntimeStateDep, SessionDep, SettingsDep
+from app.runtime.state import ReceiverLiveness
 
 router = APIRouter(tags=["health"])
 
@@ -26,37 +26,38 @@ _SEVERITY = {
     status_code=status.HTTP_200_OK,
     summary="구성요소별 서비스 상태",
 )
-async def health(request: Request, settings: SettingsDep, session: SessionDep) -> HealthResponse:
+async def health(
+    settings: SettingsDep, session: SessionDep, state: RuntimeStateDep
+) -> HealthResponse:
     components = {
         "process": ComponentHealth(status=ComponentStatus.OK),
         "database": _check_database(session),
-        "lora_radio": _check_lora(request, settings.offline_threshold_s),
-        "push": _check_push(settings.fcm_credentials_path is not None),
+        "lora_radio": _check_lora(state.lora, settings.offline_threshold_s),
+        "push": _check_push(settings.push_delivery),
     }
     worst = max(components.values(), key=lambda c: _SEVERITY[c.status]).status
     return HealthResponse(
         status=worst,
-        version=request.app.version,
-        revision=getattr(request.app.state, "alembic_revision", None),
+        version=settings.release,
+        revision=state.schema_revision,
         components=components,
     )
 
 
 def _check_database(session: SessionDep) -> ComponentHealth:
     try:
-        session.execute(text("SELECT 1"))  # 가벼운 확인. 집계 쿼리 금지.
+        session.execute(text("SELECT 1"))
     except Exception as exc:
         return ComponentHealth(status=ComponentStatus.FAILED, detail=type(exc).__name__)
     return ComponentHealth(status=ComponentStatus.OK)
 
 
-def _check_lora(request: Request, threshold_s: int) -> ComponentHealth:
-    last_seen: datetime | None = getattr(request.app.state, "lora_last_frame_at", None)
-    if not getattr(request.app.state, "lora_running", False):
+def _check_lora(lora: ReceiverLiveness, threshold_s: int) -> ComponentHealth:
+    if not lora.enabled:
         return ComponentHealth(status=ComponentStatus.DISABLED, detail="수신 task 미가동")
-    if last_seen is None:
+    elapsed = lora.silence_s(datetime.now(UTC))
+    if elapsed is None:
         return ComponentHealth(status=ComponentStatus.DEGRADED, detail="수신 이력 없음")
-    elapsed = (datetime.now(UTC) - last_seen).total_seconds()
     if elapsed > threshold_s:
         return ComponentHealth(
             status=ComponentStatus.FAILED, detail=f"마지막 수신 {int(elapsed)}s 전"
@@ -64,7 +65,7 @@ def _check_lora(request: Request, threshold_s: int) -> ComponentHealth:
     return ComponentHealth(status=ComponentStatus.OK)
 
 
-def _check_push(configured: bool) -> ComponentHealth:
-    if not configured:
-        return ComponentHealth(status=ComponentStatus.DISABLED, detail="FCM 자격증명 미설정")
+def _check_push(delivery: PushDelivery) -> ComponentHealth:
+    if delivery == "log":
+        return ComponentHealth(status=ComponentStatus.DISABLED, detail="로그 전용 발송")
     return ComponentHealth(status=ComponentStatus.OK)

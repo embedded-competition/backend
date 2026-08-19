@@ -1,0 +1,68 @@
+name: seed-demo
+
+# 시연 데이터는 배포와 시점이 다르다. 앱 팀이 화면을 보려 할 때 채우고, 값이
+# 늙으면 다시 채운다. 태그에 묶으면 데이터를 새로 하려고 릴리스를 만들게 된다.
+on:
+  workflow_dispatch:
+    inputs:
+      reset:
+        description: '기존 시연 데이터를 지우고 다시 채운다'
+        type: boolean
+        default: true
+
+# Pi가 1대다. 배포 중에 DB를 건드리면 마이그레이션과 겹친다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    # 시크릿이 이 환경에 묶여 있다 (deploy.yml과 같은 이유).
+    environment: prod
+    steps:
+      - name: cloudflared 설치
+        run: |
+          curl -fsSL -o /tmp/cloudflared.deb \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+
+      - name: SSH 자격 준비
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      # 배포된 체크아웃을 그대로 쓴다. 여기서 checkout을 옮기면 /health가 답하는
+      # 태그와 실제로 도는 코드가 어긋난다.
+      - name: 시연 데이터 채우기
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          RESET: ${{ inputs.reset && '--reset' || '' }}
+        run: |
+          ssh -o ProxyCommand="cloudflared access ssh --hostname %h \
+                --service-token-id $CF_ACCESS_CLIENT_ID \
+                --service-token-secret $CF_ACCESS_CLIENT_SECRET" \
+              -o ConnectTimeout=30 \
+              "user@$DEPLOY_HOST" \
+              "cd ~/backend && ~/.local/bin/uv run --frozen python scripts/seed_demo.py $RESET"
+
+      - name: 시연 기기 응답 확인
+        env:
+          PUBLIC_HEALTH_URL: ${{ secrets.PUBLIC_HEALTH_URL }}
+        run: |
+          base="${PUBLIC_HEALTH_URL%/health}"
+          for n in 01 02 03 04 05; do
+            body="$(curl -fsS -m 15 "$base/v1/devices/00:00:00:00:00:$n/telemetry/current")"
+            echo "$n -> $body"
+            echo "$body" | grep -q '"status"' || { echo "기기 $n 응답이 비었다"; exit 1; }
+          done

@@ -25,8 +25,8 @@ def settings(tmp_path: Path) -> Settings:
         environment="local",
         database_path=tmp_path / "test.db",
         lora_enabled=False,
-        lora_source="fake",
-        fcm_credentials_path=None,
+        lora_source="none",
+        push_delivery="log",
         management_phone="01029015899",
     )
 
@@ -44,12 +44,7 @@ def migrated_db(settings: Settings) -> None:
 
 
 @pytest.fixture
-def app(
-    settings: Settings, migrated_db: None, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[FastAPI]:
-    # lifespan이 get_settings()를 부르므로 캐시된 설정을 테스트용으로 바꾼다.
-    monkeypatch.setattr("app.main.get_settings", lambda: settings)
-    monkeypatch.setattr("app.runtime.deps.get_settings", lambda: settings)
+def app(settings: Settings, migrated_db: None) -> Iterator[FastAPI]:
     application = create_app(settings)
     yield application
     application.dependency_overrides.clear()  # 정리 누락은 다음 테스트를 오염시킨다

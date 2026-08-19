@@ -2,43 +2,47 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 import pytest
 
-from app.domain.exceptions import (
-    FrameCrcError,
-    FrameFieldError,
-    FrameTooShort,
-    UnsupportedFrameVersion,
-)
-from app.domain.frames import Coordinates, TelemetryFrame
+from app.domain.exceptions import FrameCrcError, FrameFieldError, FrameTooShort
+from app.domain.frames import Coordinates
 from app.domain.measurements import Measure
-from app.domain.value_objects import (
-    AlertState,
-    DeviceId,
-    GasChannel,
-    SignatureFlags,
-)
+from app.domain.value_objects import AlertState
 from app.infrastructure.lora import codec
-from app.infrastructure.lora.codec import BASE_SIZE, GPS_SIZE
+from app.infrastructure.lora.codec import FRAME_SIZE, WireFrame
 from app.infrastructure.lora.crc import crc16_ccitt
-from app.infrastructure.lora.frame import build_frame, parse_frame
+from app.infrastructure.lora.frame import ABSENT_SEQ, build_frame, parse_frame, to_domain
+from tests.builders import a_frame
 
-NOW = datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC)
+RECEIVED_AT = datetime(2026, 8, 13, 9, 0, 0, tzinfo=UTC)
+MAC_HEX = "a4cf12345678"
+
+_MQ7_OFFSET = 6
+_SEOUL = Coordinates(lat=37.5573, lon=127.0329)
 
 
-def _frame(**kwargs: object) -> TelemetryFrame:
-    defaults: dict[str, object] = {
-        "version": codec.FRAME_VERSION,
-        "hw_id": DeviceId("aabbccddeeff"),
-        "seq": 42,
-        "measured_at": NOW,
-        "state": AlertState.WATCH,
-        "latched": False,
+def _wire(**overrides: object) -> WireFrame:
+    fields: dict[str, object] = {
+        "mac_hex": MAC_HEX,
+        "mq7": 80,
+        "mq8": 90,
+        "pressure": 110,
+        "water": 30,
+        "voc": 120,
+        "lat": math.nan,
+        "lon": math.nan,
     }
-    defaults.update(kwargs)
-    return TelemetryFrame(**defaults)  # type: ignore[arg-type]
+    fields.update(overrides)
+    return WireFrame(**fields)  # type: ignore[arg-type]
+
+
+def _resealed(payload: bytearray) -> bytes:
+    """본문을 건드린 뒤 CRC를 다시 씌운다 — CRC가 아니라 다음 검사를 시험하려는 것."""
+    payload[-2:] = crc16_ccitt(bytes(payload[:-2])).to_bytes(2, "little")
+    return bytes(payload)
 
 
 class TestCrc:
@@ -50,116 +54,108 @@ class TestCrc:
         assert crc16_ccitt(b"") == 0xFFFF
 
 
-class TestRoundTrip:
-    def test_minimal_frame(self) -> None:
-        original = _frame()
+class TestWire:
+    def test_frame_is_twenty_six_bytes(self) -> None:
+        """표가 약속한 26B. 늘어나면 전파 시간과 듀티가 함께 늘어난다."""
+        assert len(codec.encode(_wire())) == FRAME_SIZE
+        assert FRAME_SIZE == 26
 
-        restored = parse_frame(build_frame(original))
+    def test_round_trip_keeps_every_level(self) -> None:
+        original = _wire(mq7=1000, mq8=0, pressure=555, water=1, voc=999, lat=0.0, lon=0.0)
 
-        assert restored.hw_id == original.hw_id
-        assert restored.seq == 42
-        assert restored.state is AlertState.WATCH
-        assert restored.measured_at == NOW
+        assert codec.decode(codec.encode(original)) == original
 
-    def test_frame_without_gps_is_base_size(self) -> None:
-        assert len(build_frame(_frame())) == BASE_SIZE
+    def test_round_trip_keeps_coordinates(self) -> None:
+        restored = codec.decode(codec.encode(_wire(lat=37.5573, lon=127.0329)))
 
-    def test_frame_with_gps_is_larger(self) -> None:
-        payload = build_frame(_frame(location=Coordinates(lat=37.5573, lon=127.0329)))
+        assert restored.lat == pytest.approx(37.5573, abs=1e-4)
+        assert restored.lon == pytest.approx(127.0329, abs=1e-4)
 
-        assert len(payload) == GPS_SIZE
-        assert GPS_SIZE - BASE_SIZE == 8
+    def test_level_beyond_scale_is_rejected(self) -> None:
+        """노드는 0~1000으로 clamp해 보낸다. 넘어오면 계약이 깨진 것이다."""
+        with pytest.raises(FrameFieldError):
+            _wire(mq7=1001)
 
-    def test_channels_survive(self) -> None:
-        original = _frame(
-            values={
-                Measure.VOC_DEV: 6.28,
-                Measure.VOC_SLOPE: 7.15,
-                Measure.H2_DEV: -1.5,
-            }
-        )
-
-        restored = parse_frame(build_frame(original))
-
-        by_channel = {c.channel: c for c in restored.channels}
-        assert by_channel[GasChannel.VOC].deviation == pytest.approx(6.28)
-        assert by_channel[GasChannel.H2].slope is None
-        # 미장착 채널은 아예 올라오지 않는다
-        assert GasChannel.CO not in by_channel
-
-    def test_signature_absent_stays_none(self) -> None:
-        """'전부 false'와 '안 보냄'을 구분해야 오경보 분석이 가능하다."""
-        restored = parse_frame(build_frame(_frame(signature=None)))
-
-        assert restored.signature is None
-
-    def test_signature_all_false_is_not_none(self) -> None:
-        original = _frame(
-            signature=SignatureFlags(rise=False, hold=False, no_recover=False, hold_s=0)
-        )
-
-        restored = parse_frame(build_frame(original))
-
-        assert restored.signature is not None
-        assert restored.signature.is_complete is False
-
-    def test_gps_precision_is_preserved_enough(self) -> None:
-        original = _frame(location=Coordinates(lat=37.5573, lon=127.0329))
-
-        restored = parse_frame(build_frame(original))
-
-        assert restored.location is not None
-        assert restored.location.lat == pytest.approx(37.5573, abs=1e-4)
-        assert restored.location.lon == pytest.approx(127.0329, abs=1e-4)
+    def test_negative_level_is_rejected(self) -> None:
+        with pytest.raises(FrameFieldError):
+            _wire(voc=-1)
 
 
 class TestRejection:
     def test_short_payload(self) -> None:
         with pytest.raises(FrameTooShort):
-            parse_frame(b"\x01\x00")
+            parse_frame(b"\x00\x01", RECEIVED_AT)
 
-    def test_length_mismatch_with_gps_flag(self) -> None:
-        payload = bytearray(build_frame(_frame()))
-        payload[1] |= codec.FLAG_HAS_GPS  # GPS 있다고 주장하지만 길이가 안 맞음
-
+    def test_long_payload(self) -> None:
+        """길이가 고정이라 남는 바이트는 다른 포맷이라는 뜻이다."""
         with pytest.raises(FrameTooShort):
-            parse_frame(bytes(payload))
+            parse_frame(codec.encode(_wire()) + b"\x00", RECEIVED_AT)
 
     def test_corrupted_byte_fails_crc(self) -> None:
-        payload = bytearray(build_frame(_frame()))
-        payload[10] ^= 0xFF
+        payload = bytearray(codec.encode(_wire()))
+        payload[8] ^= 0xFF
 
         with pytest.raises(FrameCrcError):
-            parse_frame(bytes(payload))
+            parse_frame(bytes(payload), RECEIVED_AT)
 
-    def test_unknown_version_is_rejected(self) -> None:
-        payload = bytearray(build_frame(_frame()))
-        payload[0] = 99
-        payload[-2:] = crc16_ccitt(bytes(payload[:-2])).to_bytes(2, "little")
-
-        with pytest.raises(UnsupportedFrameVersion):
-            parse_frame(bytes(payload))
-
-    def test_unknown_state_code_is_rejected(self) -> None:
-        payload = bytearray(build_frame(_frame()))
-        payload[14] = 9
-        payload[-2:] = crc16_ccitt(bytes(payload[:-2])).to_bytes(2, "little")
+    def test_level_beyond_scale_is_rejected_on_parse(self) -> None:
+        payload = bytearray(codec.encode(_wire()))
+        payload[_MQ7_OFFSET : _MQ7_OFFSET + 2] = (1001).to_bytes(2, "little")
 
         with pytest.raises(FrameFieldError):
-            parse_frame(bytes(payload))
+            parse_frame(_resealed(payload), RECEIVED_AT)
 
-    def test_value_beyond_int16_scale_is_rejected(self) -> None:
-        """±327.67을 넘는 z-score는 인코딩 불가 — 조용히 잘리지 않는다."""
-        with pytest.raises(FrameFieldError):
-            build_frame(_frame(values={Measure.VOC_DEV: 400.0}))
 
-    def test_out_of_range_measure_is_rejected_on_parse(self) -> None:
-        """범위는 measurements 표가 정한다 — 코덱이 따로 알지 않는다."""
-        payload = bytearray(build_frame(_frame(values={Measure.HUMIDITY_PCT: 50.0})))
-        slot = codec.MEASURE_ORDER.index(Measure.HUMIDITY_PCT)
-        offset = 15 + slot * 2  # _HEADER_SIZE + 슬롯 오프셋
-        payload[offset : offset + 2] = (200 * 100).to_bytes(2, "little", signed=True)
-        payload[-2:] = crc16_ccitt(bytes(payload[:-2])).to_bytes(2, "little")
+class TestDomainMapping:
+    def test_levels_land_on_their_channels(self) -> None:
+        frame = to_domain(_wire(mq7=80, mq8=90, pressure=110, water=30, voc=120), RECEIVED_AT)
 
-        with pytest.raises(FrameFieldError):
-            parse_frame(bytes(payload))
+        assert frame.value(Measure.CO_DEV) == 80
+        assert frame.value(Measure.H2_DEV) == 90
+        assert frame.value(Measure.PRESSURE_DEV) == 110
+        assert frame.value(Measure.WATER_LEVEL) == 30
+        assert frame.value(Measure.VOC_DEV) == 120
+
+    def test_measured_at_is_receive_time(self) -> None:
+        """노드에 시계가 없다. 서버가 수신 시각을 찍는다."""
+        assert to_domain(_wire(), RECEIVED_AT).measured_at == RECEIVED_AT
+
+    def test_seq_is_not_invented(self) -> None:
+        """노드가 seq를 안 보낸다. 카운터를 지어내면 유실 통계가 거짓이 된다."""
+        assert to_domain(_wire(), RECEIVED_AT).seq == ABSENT_SEQ
+
+    def test_state_is_normal_because_the_node_sends_no_verdict(self) -> None:
+        """프레임에 판정이 없다. 값만으로 위험을 단정하지 않는다."""
+        assert to_domain(_wire(mq7=1000, voc=1000), RECEIVED_AT).state is AlertState.NORMAL
+
+    def test_nan_fix_is_no_location(self) -> None:
+        assert to_domain(_wire(lat=math.nan, lon=math.nan), RECEIVED_AT).location is None
+
+    def test_fix_becomes_coordinates(self) -> None:
+        location = to_domain(_wire(lat=37.5573, lon=127.0329), RECEIVED_AT).location
+
+        assert location is not None
+        assert location.lat == pytest.approx(37.5573, abs=1e-4)
+
+    def test_domain_frame_survives_the_wire(self) -> None:
+        original = a_frame(
+            RECEIVED_AT,
+            values={
+                Measure.CO_DEV: 80.0,
+                Measure.H2_DEV: 90.0,
+                Measure.PRESSURE_DEV: 110.0,
+                Measure.WATER_LEVEL: 30.0,
+                Measure.VOC_DEV: 120.0,
+            },
+            location=_SEOUL,
+        )
+
+        restored = parse_frame(build_frame(original), RECEIVED_AT)
+
+        assert restored.values == original.values
+        assert restored.location is not None
+
+    def test_zero_coordinates_are_no_location(self) -> None:
+        """노드가 GPS 미장착 자리에 0.0f를 채운다 — 좌표로 믿으면 모든 킥보드가
+        기니만 앞바다에 찍힌다."""
+        assert to_domain(_wire(lat=0.0, lon=0.0), RECEIVED_AT).location is None

@@ -23,22 +23,30 @@
 
 | 항목 | 기존 서버 컨벤션 | 확정 |
 |---|---|---|
-| 경로 | `/api/v1/devices` | `/devices/{deviceId}/...` (버전 prefix 없음) |
+| 경로 | `/api/v1/devices` | `/devices/{mac}/...` (버전 prefix 없음, A2에서 개정) |
 | 에러 바디 | `{code, message, request_id, detail}` | `{"error": "device_not_found"}` |
 | 필드 명명 | snake_case | **camelCase** (`devZ`, `battMv`, `lastSeen`) |
 | 성공 바디 | 래핑 | 리소스 그대로 |
 
 에러 바디에 `request_id`를 추가로 넣는다 — 앱은 `error` 키만 읽으면 되므로 호환이 깨지지 않고, 서버 로그 대조에 필요하다.
 
-### A2. deviceToken 인증 도입
+### A2. deviceToken 인증 도입 → **철회. MAC 직접 주소화** 🔴
 
-`security.md`에 "미도입 부채"로 적어둔 항목을 해소한다.
+한 번 구현했다가 앱 팀 요구로 되돌렸다. 이 항목은 기록으로 남긴다 — 되돌린 결정을
+지우면 왜 지금 인증이 없는지 다음 사람이 알 수 없다.
 
-- `POST /devices`가 MAC 등록과 함께 토큰 발급
-- 이후 모든 요청에 `Authorization: Bearer <deviceToken>`
-- 만료 없음, 재등록 시 새 토큰 발급하되 기존 토큰 무효화 안 함 (앱 spec §인증, O4 단일기기 전제)
-- 서버는 **토큰 원문을 저장하지 않는다** — SHA-256 해시만 보관. 유출 시 피해 범위를 줄인다
-- 기기당 토큰 여러 개를 허용하므로 별도 테이블(`access_tokens`)
+**확정**: `deviceId`도 `deviceToken`도 없다. **MAC이 곧 식별자이자 유일한 키**다.
+
+- `POST /devices` 삭제. 기기는 **첫 프레임이 만든다**
+- 모든 경로가 `/devices/{mac}/...`. `AA:BB:CC:DD:EE:FF`와 `aabbccddeeff` 둘 다 받는다
+- `Authorization` 헤더 없음
+- 없는 MAC은 404 `device_not_found`
+
+**대가**: MAC을 아는 사람은 누구나 그 킥보드의 센서·위치를 읽고 경보를 해제할 수 있다.
+사용자가 트레이드오프를 보고 고른 결정이다. 앱 플로우가 짧아지는 것이 이유다.
+
+`access_tokens` 테이블과 `devices.public_id` 컬럼은 **남긴다** — 마이그레이션이
+forward-only Expand-Contract라 쓰기를 멈추는 것까지가 이번 범위다.
 
 ### A3. Expo Push로 전환
 
@@ -138,13 +146,65 @@ O1이 "임베디드 모듈이 직접 측정"으로 확정됐는데, 지금 노�
 
 ---
 
+## E. v1 계약 개편
+
+### E1. 모든 도메인 경로에 `/v1` 접두
+
+`/health`·`/docs`는 운영용이라 버전 밖에 둔다. 나머지는 전부 `/v1/devices/{mac}/...`.
+
+### E2. `telemetry/summary` → `telemetry/current` + `telemetry/peaks`
+
+`live` boolean 하나로 "지금 값"과 "기간 중 최고치"라는 서로 다른 두 응답을 겸하던 것을 쪼갰다.
+`current`는 구간 개념 자체가 없고(from/to 파라미터 없음), `peaks`는 from/to를 받되 에코백하지 않는다
+(서버가 손대지 않는 값이라 클라가 이미 안다). 부수 효과로, `_live` 경로가 period를 무시하고
+`readings.latest()`를 그대로 돌려주던 버그가 `current`에는 period 자체가 없어져 구조적으로 사라졌다.
+
+### E3. `state` → `status` + `conditions[]`
+
+`AlertState`(WARMUP/NORMAL/WATCH/ALARM/FAULT) 하나가 "사용자가 취해야 하는 상태"와
+"기기에 무슨 일이 일어나는가"라는 두 축을 접고 있었다. 후자를 `Condition`
+(`CO_RISE`/`H2_RISE`/`VOC_RISE`/`PRESSURE_RISE`/`WATER`/`SENSOR_FAULT`/`UNKNOWN`)으로 분리해
+배열로 내려준다 — 여러 원인이 동시에 성립할 수 있어서다. `status`는 기존 `state`와 같은 값·같은
+도출 규칙을 유지한다.
+
+**호환 규칙**: `TEMP_RISE`·`RAPID_WORSENING`·`IGNITION`은 프레임 v2에서 추가될 예정이라 지금은
+만들지 않는다. **클라는 모르는 `conditions` 값을 무시해야 한다** — 나중에 값이 늘어도 이 계약이
+깨지지 않게 하기 위해서다.
+
+**`UNKNOWN`**: 노드가 매핑표에 없는 ALERT 원인을 보내면 프레임을 버리지 않고 `UNKNOWN`으로
+흡수한다(서버 로그에 원본 문자열을 남겨 다음 배포에서 정확한 값으로 승격한다). 펌웨어와 서버는
+따로 배포되므로 이 상황은 예정된 일이다 — 그 순간 프레임을 버리면 새 이상이 감지된 바로 그
+때 센서 값까지 함께 사라진다. `status`엔 WATCH로 반영되고(`SENSOR_FAULT`가 아닌 원인이므로),
+클라는 `UNKNOWN`도 위 호환 규칙에 따라 무시하면 된다.
+
+### E4. `telemetry/history` → `sensors/{sensor}/detail`
+
+여러 채널을 한 번에 담던 `history`를 채널 하나만 보는 `sensors/{sensor}/detail`로 쪼갰다
+(`sensor` ∈ `gas|h2|co|pressure|temp|rh`). 칸(`bucket`)에서 `state`·`samples`·`events`를 뺐다 —
+단일 채널에 기기 전체 상태를 붙이면 축이 안 맞고, 기록은 이미 `/events`가 따로 있다.
+`interval`도 더 이상 에코백하지 않는다 — 자유 형식 파싱을 닫힌 집합(`5m/15m/30m/1h/2h/6h/12h/1d`)으로
+좁혀 서버가 값을 정규화할 일 자체가 없어졌기 때문이다.
+
+### E5. `/events`에 `truncated` 추가
+
+기존엔 200개 상한에서 조용히 잘렸다. `{items, truncated}`로 잘림 여부를 드러낸다.
+
+### E6. `location`의 404를 두 가지로 분리
+
+기기가 없는 것(`device_not_found`)과 좌표를 아직 못 받은 것(`location_unavailable`)은 다른 사건이다.
+상태 코드는 둘 다 404로 유지하고, `error` 코드로 구분한다.
+
+---
+
 ## 반영 상태
 
 | 항목 | 상태 |
 |---|---|
 | A1 URL·에러·camelCase | ✅ 구현 완료 |
-| A2 deviceToken | ✅ 구현 완료 (해시 저장, 404 은닉 포함) |
+| A2 deviceToken | ❌ **철회** — MAC 직접 주소화로 대체. 인증 없음 |
 | A3 Expo Push / push_tokens rename | ✅ 구현 완료 (자격증명 없으면 LoggingPushSender) |
 | A4 events.description | ✅ 구현 완료 (`core/descriptions.py`) |
+| A5 응답 평탄화 | ✅ 구현 완료 — `range`·`peaks`·`current` 포장 제거, `devZ`→`value`, 클라 계산 가능 필드 제거 |
 | B1~B3 | **앱 팀 회신 대기** — 회신 전까지 서버는 노드 판정 전제로 진행 |
 | C1~C2 | **임베디드 팀 조정 대기** — 서버는 nullable로 받아 영향 차단 |
+| E1~E6 v1 계약 개편 | ✅ 구현 완료 |

@@ -186,7 +186,7 @@ cython_debug/
 #   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #   and can be added to the global gitignore or merged into this file.  For a more nuclear
 #   option (not recommended) you can uncomment the following to ignore the entire idea folder.
-# .idea/
+.idea/
 
 # Abstra
 #   Abstra is an AI-powered process automation framework.
@@ -220,3 +220,15 @@ __marimo__/
 # 프로젝트 고유
 data/
 .env
+
+# 비밀 — 이 저장소는 public이다. 커밋되면 그 순간 유출이다
+secrets/
+*.serviceaccount.json
+firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
+*.p8
+
+# mutmut 작업 디렉터리
+mutants/
+.mutmut-cache

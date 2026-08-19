@@ -1,138 +1,98 @@
-"""와이어 포맷 — 바이트 ↔ 원시 필드.
-
-이 모듈은 도메인 타입을 모른다. 오프셋·스케일·플래그·CRC 검증만 담당한다.
-포맷 SSOT는 docs/lora-frame.md.
-"""
-
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
 
-from app.domain import measurements
 from app.domain.exceptions import FrameCrcError, FrameFieldError, FrameTooShort
-from app.domain.measurements import Measure
 from app.infrastructure.lora.crc import crc16_ccitt
 
-FRAME_VERSION = 1
-
-_HEADER = "<BB6sHIBH"  # version, flags, device_id, seq, measured_at, state, batt_mv
-_HEADER_SIZE = struct.calcsize(_HEADER)
-_HOLD_S = "<H"
-_GPS = "<2f"
+_BODY = "<6s5H2f"
 _CRC = "<H"
+_BODY_SIZE = struct.calcsize(_BODY)
+_CRC_SIZE = struct.calcsize(_CRC)
 
-# int16 결측 센티널. 0으로 채우면 "정상 판독 0"과 구분되지 않는다.
-ABSENT = -32768
-_SCALE = 100.0
+FRAME_SIZE = _BODY_SIZE + _CRC_SIZE
 
-FLAG_HAS_GPS = 1 << 0
-FLAG_LATCHED = 1 << 1
-FLAG_SIG_RISE = 1 << 2
-FLAG_SIG_HOLD = 1 << 3
-FLAG_SIG_NO_RECOVER = 1 << 4
-FLAG_WATER = 1 << 5
-FLAG_HAS_SIGNATURE = 1 << 6
+LEVEL_MIN = 0
+LEVEL_MAX = 1000
 
-# 스케일 필드 순서는 domain.measurements.ORDER가 정한다 — 코덱이 따로 정의하면
-# 두 곳이 어긋난다. 새 항목은 반드시 ORDER 끝에 추가한다(중간 삽입은 오프셋을 민다).
-MEASURE_ORDER = measurements.ORDER
-_SCALED = f"<{len(MEASURE_ORDER)}h"
-_SCALED_SIZE = struct.calcsize(_SCALED)
+_LEVEL_FIELDS = ("mq7", "mq8", "pressure", "water", "voc")
 
-BASE_SIZE = _HEADER_SIZE + _SCALED_SIZE + 2 + 2
-GPS_SIZE = BASE_SIZE + 8
+# 노드가 GPS 미장착 상태에서 채우는 값. 좌표가 아니라 빈자리를 뜻한다.
+_NO_FIX = (0.0, 0.0)
 
 
 @dataclass(frozen=True, slots=True)
 class WireFrame:
-    """디코딩된 원시 필드. 스케일은 풀렸고 의미 해석은 안 됐다."""
+    """노드 어휘 그대로다. 도메인 이름으로 옮기는 일은 경계 한 곳에서만 한다.
 
-    version: int
-    flags: int
-    hw_id_hex: str
-    seq: int
-    measured_epoch: int
-    state_code: int
-    batt_mv: int
-    values: dict[Measure, float]
-    hold_s: int
-    lat: float | None
-    lon: float | None
+    다섯 레벨은 모두 풀스케일 대비 0~1000 정규화 값이다. SGP40(`voc`)은 노드가 이미
+    부호를 뒤집어 보내므로 다섯 채널 모두 "클수록 위험"이다.
 
-    def has(self, flag: int) -> bool:
-        return bool(self.flags & flag)
+    좌표가 없다는 표시는 NaN 또는 `(0, 0)`이다 — 아래 `has_fix`.
+    """
+
+    mac_hex: str
+    mq7: int
+    mq8: int
+    pressure: int
+    water: int
+    voc: int
+    lat: float
+    lon: float
+
+    def __post_init__(self) -> None:
+        for name in _LEVEL_FIELDS:
+            level = getattr(self, name)
+            if not LEVEL_MIN <= level <= LEVEL_MAX:
+                raise FrameFieldError(f"{name} 레벨이 0~1000 밖이다: {level}")
+
+    @property
+    def has_fix(self) -> bool:
+        """`(0, 0)`도 측위 없음으로 본다 — 지금 노드가 GPS 자리에 0.0f를 채워 보낸다.
+
+        그 좌표는 기니만 앞바다라 한국에서 운영하는 동안 진짜 판독일 수 없다. 대신
+        정직한 대가를 치른다: 노드가 GPS를 달아도 적도·본초자오선 교점만은 영영
+        보고하지 못한다.
+        """
+        if math.isnan(self.lat) or math.isnan(self.lon):
+            return False
+        return (self.lat, self.lon) != _NO_FIX
 
 
 def decode(payload: bytes) -> WireFrame:
-    """바이트 → 원시 필드. 길이·CRC 검증까지가 이 함수의 책임이다."""
-    if len(payload) < BASE_SIZE:
-        raise FrameTooShort(f"프레임이 {len(payload)}B, 최소 {BASE_SIZE}B 필요")
+    if len(payload) != FRAME_SIZE:
+        raise FrameTooShort(f"프레임이 {len(payload)}B, {FRAME_SIZE}B여야 한다")
 
-    flags = payload[1]
-    expected = GPS_SIZE if flags & FLAG_HAS_GPS else BASE_SIZE
-    if len(payload) != expected:
-        raise FrameTooShort(f"길이 불일치: {len(payload)}B, flags 기준 {expected}B 기대")
-
-    body, crc_bytes = payload[:-2], payload[-2:]
+    body, crc_bytes = payload[:_BODY_SIZE], payload[_BODY_SIZE:]
     (received_crc,) = struct.unpack(_CRC, crc_bytes)
     if crc16_ccitt(body) != received_crc:
         raise FrameCrcError(f"CRC 불일치: payload={payload.hex()}")
 
-    version, flags, hw_id, seq, epoch, state_code, batt_mv = struct.unpack_from(_HEADER, body, 0)
-    scaled = struct.unpack_from(_SCALED, body, _HEADER_SIZE)
-    (hold_s,) = struct.unpack_from(_HOLD_S, body, _HEADER_SIZE + _SCALED_SIZE)
-
-    lat = lon = None
-    if flags & FLAG_HAS_GPS:
-        lat, lon = struct.unpack_from(_GPS, body, _HEADER_SIZE + _SCALED_SIZE + 2)
-
+    mac, mq7, mq8, pressure, water, voc, lat, lon = struct.unpack(_BODY, body)
     return WireFrame(
-        version=version,
-        flags=flags,
-        hw_id_hex=hw_id.hex(),
-        seq=seq,
-        measured_epoch=epoch,
-        state_code=state_code,
-        batt_mv=batt_mv,
-        values={
-            measure: value
-            for measure, raw in zip(MEASURE_ORDER, scaled, strict=True)
-            if (value := unscale(raw)) is not None
-        },
-        hold_s=hold_s,
+        mac_hex=mac.hex(),
+        mq7=mq7,
+        mq8=mq8,
+        pressure=pressure,
+        water=water,
+        voc=voc,
         lat=lat,
         lon=lon,
     )
 
 
 def encode(frame: WireFrame) -> bytes:
-    """원시 필드 → 바이트. CRC를 붙여 완성한다."""
     body = struct.pack(
-        _HEADER,
-        frame.version,
-        frame.flags,
-        bytes.fromhex(frame.hw_id_hex),
-        frame.seq,
-        frame.measured_epoch,
-        frame.state_code,
-        frame.batt_mv,
+        _BODY,
+        bytes.fromhex(frame.mac_hex),
+        frame.mq7,
+        frame.mq8,
+        frame.pressure,
+        frame.water,
+        frame.voc,
+        frame.lat,
+        frame.lon,
     )
-    body += struct.pack(_SCALED, *(scale(frame.values.get(measure)) for measure in MEASURE_ORDER))
-    body += struct.pack(_HOLD_S, frame.hold_s)
-    if frame.has(FLAG_HAS_GPS):
-        body += struct.pack(_GPS, frame.lat, frame.lon)
     return body + struct.pack(_CRC, crc16_ccitt(body))
-
-
-def unscale(raw: int) -> float | None:
-    return None if raw == ABSENT else raw / _SCALE
-
-
-def scale(value: float | None) -> int:
-    if value is None:
-        return ABSENT
-    scaled = round(value * _SCALE)
-    if not -32767 <= scaled <= 32767:
-        raise FrameFieldError(f"스케일 후 int16 범위 초과: {value}")
-    return scaled

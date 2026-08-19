@@ -152,6 +152,7 @@ CREATE TABLE readings (
     frame_version INTEGER NOT NULL,
     state         TEXT    NOT NULL
                   CHECK (state IN ('WARMUP','NORMAL','WATCH','ALARM','FAULT')),
+    conditions    TEXT,                         -- 콤마 구분 원인 목록. NULL=마이그레이션 전 행
     latched       INTEGER,                      -- ALARM latch 유지 여부 (앱 latched)
 
     -- 가스 채널: 정규화 / 변화율 (D3, raw 미저장)

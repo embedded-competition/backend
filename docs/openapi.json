@@ -27,36 +27,45 @@
         }
       }
     },
-    "/devices": {
-      "post": {
+    "/v1/devices/{mac}": {
+      "get": {
         "tags": [
           "devices"
         ],
-        "summary": "MAC으로 기기 등록 + deviceToken 발급",
-        "operationId": "register_device_devices_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeviceRegisterRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "센서 점검 결과 (설정 화면)",
+        "description": "포화된 센서가 하나라도 있으면 FAULT다. 관측이 없으면 null.",
+        "operationId": "get_sensor_check_v1_devices__mac__get",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
+            },
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
+          }
+        ],
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceRegisterResponse"
+                  "$ref": "#/components/schemas/SensorCheckResponse"
                 }
               }
             }
           },
-          "409": {
-            "description": "이미 등록된 MAC",
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
             "content": {
               "application/json": {
                 "schema": {
@@ -66,11 +75,11 @@
             }
           },
           "422": {
-            "description": "MAC 형식 오류",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -78,29 +87,29 @@
         }
       }
     },
-    "/devices/{device_id}/push-token": {
+    "/v1/devices/{mac}/push-token": {
       "post": {
         "tags": [
           "devices"
         ],
         "summary": "Expo 푸시 토큰 등록 (멱등)",
-        "operationId": "register_push_token_devices__device_id__push_token_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "operationId": "register_push_token_v1_devices__mac__push_token_post",
         "parameters": [
           {
-            "name": "device_id",
+            "name": "mac",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
             },
-            "description": "POST /devices가 발급한 식별자"
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
           }
         ],
         "requestBody": {
@@ -124,6 +133,16 @@
               }
             }
           },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -137,30 +156,30 @@
         }
       }
     },
-    "/devices/{device_id}/telemetry/latest": {
+    "/v1/devices/{mac}/telemetry/current": {
       "get": {
         "tags": [
           "telemetry"
         ],
-        "summary": "현재 상태 조회",
-        "description": "raw 센서값(sraw·mv·baseline)은 포함하지 않는다 — 노드가 판정하고 정규화값만 전송한다. `module.lastSeen`으로 데이터 나이를 확인할 것.",
-        "operationId": "latest_telemetry_devices__device_id__telemetry_latest_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "summary": "지금 상태 (메인 화면)",
+        "description": "구간 개념이 없다. 관측이 하나도 없으면 status가 null이고 채널이 전부 null이다.",
+        "operationId": "telemetry_current_v1_devices__mac__telemetry_current_get",
         "parameters": [
           {
-            "name": "device_id",
+            "name": "mac",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
             },
-            "description": "POST /devices가 발급한 식별자"
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
           }
         ],
         "responses": {
@@ -169,7 +188,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TelemetryResponse"
+                  "$ref": "#/components/schemas/DeviceCurrentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -187,41 +216,54 @@
         }
       }
     },
-    "/devices/{device_id}/telemetry/history": {
+    "/v1/devices/{mac}/telemetry/peaks": {
       "get": {
         "tags": [
           "telemetry"
         ],
-        "summary": "날짜별 시간당 집계 (통계 탭)",
-        "operationId": "telemetry_history_devices__device_id__telemetry_history_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "summary": "기간 중 최고치",
+        "description": "from·to는 요청한 값 그대로라 에코백하지 않는다. 채널 at은 최고치를 찍은 시각.",
+        "operationId": "telemetry_peaks_v1_devices__mac__telemetry_peaks_get",
         "parameters": [
           {
-            "name": "device_id",
+            "name": "mac",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
             },
-            "description": "POST /devices가 발급한 식별자"
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
           },
           {
-            "name": "date",
+            "name": "from",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "format": "date",
-              "description": "조회 날짜 (UTC 기준)",
-              "title": "Date"
+              "format": "date-time",
+              "description": "조회 시작 (UTC, 포함)",
+              "title": "From"
             },
-            "description": "조회 날짜 (UTC 기준)"
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 끝 (UTC, 미포함)",
+              "title": "To"
+            },
+            "description": "조회 끝 (UTC, 미포함)"
           }
         ],
         "responses": {
@@ -230,7 +272,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HistoryResponse"
+                  "$ref": "#/components/schemas/PeriodPeaksResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -248,29 +300,133 @@
         }
       }
     },
-    "/devices/{device_id}/events": {
+    "/v1/devices/{mac}/sensors/{sensor}/detail": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "단일 채널 기간·눈금별 집계 (상세 화면 차트)",
+        "description": "각 칸의 값은 평균이 아니라 최고치다 — 평균은 스파이크를 지우고 지워진 스파이크가 곧 놓친 경보다.",
+        "operationId": "sensor_detail_v1_devices__mac__sensors__sensor__detail_get",
+        "parameters": [
+          {
+            "name": "sensor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Sensor",
+              "description": "단일 측정 채널"
+            },
+            "description": "단일 측정 채널"
+          },
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
+            },
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Interval",
+              "description": "집계 눈금"
+            },
+            "description": "집계 눈금"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 시작 (UTC, 포함)",
+              "title": "From"
+            },
+            "description": "조회 시작 (UTC, 포함)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "조회 끝 (UTC, 미포함)",
+              "title": "To"
+            },
+            "description": "조회 끝 (UTC, 미포함)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensorDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/devices/{mac}/events": {
       "get": {
         "tags": [
           "telemetry"
         ],
         "summary": "기록(이벤트) 조회",
-        "operationId": "list_events_devices__device_id__events_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "operationId": "list_events_v1_devices__mac__events_get",
         "parameters": [
           {
-            "name": "device_id",
+            "name": "mac",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
             },
-            "description": "POST /devices가 발급한 식별자"
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
           },
           {
             "name": "since",
@@ -279,10 +435,22 @@
             "schema": {
               "type": "string",
               "format": "date-time",
-              "description": "이 시각 이후 이벤트 (UTC)",
+              "description": "이 시각 이후 이벤트 (UTC, 포함)",
               "title": "Since"
             },
-            "description": "이 시각 이후 이벤트 (UTC)"
+            "description": "이 시각 이후 이벤트 (UTC, 포함)"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "이 시각 이전 이벤트 (UTC, 미포함)",
+              "title": "Until"
+            },
+            "description": "이 시각 이전 이벤트 (UTC, 미포함)"
           }
         ],
         "responses": {
@@ -296,51 +464,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/devices/{device_id}/fleet-comparison": {
-      "get": {
-        "tags": [
-          "telemetry"
-        ],
-        "summary": "등록된 전체 기기 대비 내 위치",
-        "operationId": "fleet_comparison_devices__device_id__fleet_comparison_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "device_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
-            },
-            "description": "POST /devices가 발급한 식별자"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FleetComparisonResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -358,29 +487,88 @@
         }
       }
     },
-    "/devices/{device_id}/alarm/release": {
+    "/v1/devices/{mac}/location": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "마지막으로 보고된 위치",
+        "operationId": "device_location_v1_devices__mac__location_get",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
+            },
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "device_not_found(기기 없음) 또는 location_unavailable(좌표 없음)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/devices/{mac}/alarm/release": {
       "post": {
         "tags": [
           "alerts"
         ],
         "summary": "경보 해제 요청",
-        "operationId": "release_alarm_devices__device_id__alarm_release_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "operationId": "release_alarm_v1_devices__mac__alarm_release_post",
         "parameters": [
           {
-            "name": "device_id",
+            "name": "mac",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "POST /devices가 발급한 식별자",
-              "title": "Device Id"
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+              "examples": [
+                "AA:BB:CC:DD:EE:FF"
+              ],
+              "title": "Mac"
             },
-            "description": "POST /devices가 발급한 식별자"
+            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다"
           }
         ],
         "requestBody": {
@@ -406,6 +594,218 @@
           },
           "403": {
             "description": "해제 거부 (사유 비공개)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MAC에 해당하는 기기 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/simulation": {
+      "get": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "스케줄러와 노드들의 지금 상태",
+        "description": "채널마다 지금 눈금·목표·남은 시간과, 조건이 서는 눈금을 함께 준다.",
+        "operationId": "read_simulator_v1_simulation_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "스케줄러 구동·틱 간격 조절",
+        "description": "넘기지 않은 항목은 그대로 둔다. 틱 간격은 진행 중인 대기가 끝난 뒤 반영된다.",
+        "operationId": "tune_simulator_v1_simulation_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorTuneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/simulation/devices/{mac}/channels/{channel}/flow": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "센서 하나의 흐름을 지시",
+        "description": "지금 눈금에서 지정한 폭만큼, 지정한 시간에 걸쳐 선형으로 옮긴다. 진행 중인 흐름이 있으면 지금 위치에서 다시 출발한다.",
+        "operationId": "steer_flow_v1_simulation_devices__mac__channels__channel__flow_post",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "시뮬레이터가 흉내내는 테스트 기기의 MAC",
+              "examples": [
+                "00:00:00:00:00:01"
+              ],
+              "title": "Mac"
+            },
+            "description": "시뮬레이터가 흉내내는 테스트 기기의 MAC"
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/NodeChannel",
+              "description": "노드가 보내는 측정 채널"
+            },
+            "description": "노드가 보내는 측정 채널"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowCommandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "시뮬레이터가 흉내내지 않는 MAC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/simulation/devices/{mac}/reset": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "노드를 기준선으로 되돌린다",
+        "description": "모든 채널을 기준 눈금으로 되돌리고 경보 latch를 푼다.",
+        "operationId": "reset_node_v1_simulation_devices__mac__reset_post",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 17,
+              "description": "시뮬레이터가 흉내내는 테스트 기기의 MAC",
+              "examples": [
+                "00:00:00:00:00:01"
+              ],
+              "title": "Mac"
+            },
+            "description": "시뮬레이터가 흉내내는 테스트 기기의 MAC"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "시뮬레이터가 흉내내지 않는 MAC",
             "content": {
               "application/json": {
                 "schema": {
@@ -471,8 +871,124 @@
           "ALARM",
           "FAULT"
         ],
-        "title": "AlertState",
-        "description": "노드가 판정해 올려보내는 상태. 서버는 재판정하지 않는다."
+        "title": "AlertState"
+      },
+      "BucketLevel": {
+        "type": "string",
+        "enum": [
+          "NORMAL",
+          "CAUTION",
+          "DANGER"
+        ],
+        "title": "BucketLevel",
+        "description": "차트 한 칸이 어느 정도인가. 앱은 이 값으로 칸을 색칠한다.\n\nstatus(사용자 행동)나 stage(진행 단계)와 다른 축이다. 저 둘은 기기 전체를\n말하지만 이것은 센서 하나의 한 구간만 말한다."
+      },
+      "ChannelFlowResponse": {
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/NodeChannel"
+          },
+          "level": {
+            "type": "number",
+            "title": "Level",
+            "description": "지금 눈금 (0~1000)"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "진행 중인 흐름의 목표 눈금"
+          },
+          "secondsLeft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondsleft",
+            "description": "목표까지 남은 시간"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Condition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 눈금에서 이 채널이 세우는 조건"
+          },
+          "watchAt": {
+            "type": "number",
+            "title": "Watchat",
+            "description": "이 눈금부터 조건이 선다"
+          },
+          "alarmAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alarmat",
+            "description": "이 눈금부터 경보로 latch된다. 침수 채널은 null"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "level",
+          "watchAt"
+        ],
+        "title": "ChannelFlowResponse"
+      },
+      "ChannelResponse": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "기준선 대비 상대 편차. 평소와 같으면 0",
+            "examples": [
+              3.1
+            ]
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope",
+            "description": "value의 분당 변화량",
+            "examples": [
+              2.4
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ChannelResponse"
       },
       "ComponentHealth": {
         "properties": {
@@ -511,106 +1027,196 @@
         ],
         "title": "ComponentStatus"
       },
-      "DeviceRegisterRequest": {
+      "Condition": {
+        "type": "string",
+        "enum": [
+          "CO_RISE",
+          "H2_RISE",
+          "VOC_RISE",
+          "PRESSURE_RISE",
+          "WATER",
+          "SENSOR_FAULT",
+          "UNKNOWN"
+        ],
+        "title": "Condition"
+      },
+      "DetailBucketResponse": {
         "properties": {
-          "mac": {
+          "start": {
             "type": "string",
-            "maxLength": 17,
-            "minLength": 12,
-            "title": "Mac",
-            "description": "점검장비 라벨의 MAC 주소. 구분자는 서버가 정규화한다",
+            "format": "date-time",
+            "title": "Start",
+            "description": "눈금 구간의 시작 시각 (UTC, 끝은 미포함)"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BucketLevel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 칸의 정도(평소·주의·위험). 판정 기준이 아직 없어 지금은 항상 null이다 — 프레임 v2의 편차값이 와야 임계를 말할 수 있다"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "이 칸의 최고치",
             "examples": [
-              "AA:BB:CC:DD:EE:FF"
+              3.1
+            ]
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope",
+            "description": "value의 분당 변화량",
+            "examples": [
+              2.4
             ]
           }
         },
         "type": "object",
         "required": [
-          "mac"
+          "start"
         ],
-        "title": "DeviceRegisterRequest"
+        "title": "DetailBucketResponse"
       },
-      "DeviceRegisterResponse": {
+      "DeviceCurrentResponse": {
         "properties": {
-          "deviceId": {
-            "type": "string",
-            "title": "Deviceid",
-            "description": "이후 모든 경로에 쓰는 식별자",
-            "examples": [
-              "dev_01h8xzk3q0"
-            ]
-          },
-          "deviceToken": {
-            "type": "string",
-            "title": "Devicetoken",
-            "description": "Authorization: Bearer 에 쓴다. 만료 없음. 재조회 불가 — 앱이 저장해야 한다",
-            "examples": [
-              "dtk_9f8e7d6c5b4a"
-            ]
-          },
-          "managementPhone": {
+          "status": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DeviceStatus"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Managementphone",
-            "description": "등록 위치 관리실 전화번호. 경보 화면 버튼에 사용",
-            "examples": [
-              "01029015899"
+            "description": "지금 취해야 하는 행동. 관측이 없거나 예열 중이면 null"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "화재로 가는 진행 단계. 앱은 이 단계까지 칸을 채운다. 판정할 규칙이 아직 없으면 null — NONE('이상 없음')과 다르다"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array",
+            "title": "Conditions",
+            "description": "지금 기기에 일어나고 있는 현상들 — 여러 개가 동시에 성립할 수 있다"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At",
+            "description": "이 응답이 근거로 삼은 마지막 관측 시각 (UTC)"
+          },
+          "latched": {
+            "type": "boolean",
+            "title": "Latched",
+            "description": "ALARM latch 유지 여부. 자동 해제 없음",
+            "default": false
+          },
+          "water": {
+            "type": "boolean",
+            "title": "Water",
+            "description": "침수·누액 감지 여부",
+            "default": false
+          },
+          "gas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "h2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "co": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pressure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelResponse"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },
         "type": "object",
         "required": [
-          "deviceId",
-          "deviceToken"
+          "conditions"
         ],
-        "title": "DeviceRegisterResponse"
+        "title": "DeviceCurrentResponse"
       },
-      "EnvResponse": {
-        "properties": {
-          "tempC": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tempc"
-          },
-          "rh": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rh",
-            "description": "상대습도 %"
-          },
-          "dRhDt": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Drhdt",
-            "description": "습도 변화율 %RH/min. 습도 게이트 근거"
-          }
-        },
-        "type": "object",
-        "title": "EnvResponse"
+      "DeviceStatus": {
+        "type": "string",
+        "enum": [
+          "STABLE",
+          "SERVICE_NEEDED",
+          "REPORT"
+        ],
+        "title": "DeviceStatus",
+        "description": "사용자가 지금 무엇을 해야 하는가. 화면 게이지의 세 지점과 1:1이다.\n\n도메인의 AlertState는 다섯 값이지만 그중 둘은 사용자에게 시킬 행동이 없다.\nWARMUP은 아직 말할 것이 없고, WATCH는 \"지켜본다\"라서 게이지에 놓을 자리가\n없다 — 무엇을 지켜봐야 하는지는 stage가 대신 답한다."
+      },
+      "Direction": {
+        "type": "string",
+        "enum": [
+          "rise",
+          "fall"
+        ],
+        "title": "Direction"
       },
       "ErrorResponse": {
         "properties": {
@@ -628,8 +1234,7 @@
           "error",
           "requestId"
         ],
-        "title": "ErrorResponse",
-        "description": "전 endpoint 단일 에러 형식 (앱 api-spec.md §공통 에러).\n\n앱은 `error` 키만 읽는다. `requestId`는 서버 로그 대조용 부가 정보라\n추가해도 앱 계약이 깨지지 않는다."
+        "title": "ErrorResponse"
       },
       "EventListResponse": {
         "properties": {
@@ -639,21 +1244,28 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "더 있지만 이 응답에 담기지 않은 이벤트가 있는지"
           }
         },
         "type": "object",
         "required": [
-          "items"
+          "items",
+          "truncated"
         ],
         "title": "EventListResponse"
       },
       "EventResponse": {
         "properties": {
           "id": {
-            "type": "string",
+            "type": "integer",
             "title": "Id",
+            "description": "기록의 식별자",
             "examples": [
-              "evt_1"
+              1
             ]
           },
           "timestamp": {
@@ -685,72 +1297,35 @@
         ],
         "title": "EventResponse"
       },
-      "FleetComparisonResponse": {
+      "FlowCommandRequest": {
         "properties": {
-          "fleetSize": {
-            "type": "integer",
-            "title": "Fleetsize"
+          "direction": {
+            "$ref": "#/components/schemas/Direction",
+            "description": "오르는 흐름인지 내리는 흐름인지"
           },
-          "fleetAvgLevel": {
-            "$ref": "#/components/schemas/AlertState"
-          },
-          "myLevel": {
-            "$ref": "#/components/schemas/AlertState"
-          },
-          "myMultiplier": {
+          "amount": {
             "type": "number",
-            "title": "Mymultiplier",
-            "description": "전체 평균 심각도 대비 내 배수",
-            "examples": [
-              8.0
-            ]
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "description": "옮길 눈금 폭. 0~1000 스케일이고 범위 밖은 잘린다"
+          },
+          "overSeconds": {
+            "type": "number",
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Overseconds",
+            "description": "이 시간에 걸쳐 옮긴다. 0이면 다음 틱에 즉시"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "fleetSize",
-          "fleetAvgLevel",
-          "myLevel",
-          "myMultiplier"
+          "direction",
+          "amount",
+          "overSeconds"
         ],
-        "title": "FleetComparisonResponse"
-      },
-      "GasChannelResponse": {
-        "properties": {
-          "devZ": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Devz",
-            "description": "baseline 대비 z-score. 가스 방향이 양수",
-            "examples": [
-              3.1
-            ]
-          },
-          "slope": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Slope",
-            "description": "dev 변화율 (z/min)",
-            "examples": [
-              2.4
-            ]
-          }
-        },
-        "type": "object",
-        "title": "GasChannelResponse",
-        "description": "raw(sraw·mv·baseline)는 없다 — 노드가 정규화값만 보낸다 (정합화 B2)."
+        "title": "FlowCommandRequest"
       },
       "HTTPValidationError": {
         "properties": {
@@ -774,9 +1349,9 @@
           "version": {
             "type": "string",
             "title": "Version",
-            "description": "앱 버전",
+            "description": "지금 돌고 있는 배포의 태그. 주입이 없으면 'dev'",
             "examples": [
-              "0.1.0"
+              "v0.6.0"
             ]
           },
           "revision": {
@@ -809,124 +1384,21 @@
           "version",
           "components"
         ],
-        "title": "HealthResponse",
-        "description": "구성요소별로 나눠 반환한다 — 무선 두절이 200 OK로 보이면 안 된다."
+        "title": "HealthResponse"
       },
-      "HistoryEventResponse": {
-        "properties": {
-          "time": {
-            "type": "string",
-            "title": "Time",
-            "examples": [
-              "14:32"
-            ]
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          }
-        },
-        "type": "object",
-        "required": [
-          "time",
-          "description"
+      "Interval": {
+        "type": "string",
+        "enum": [
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "2h",
+          "6h",
+          "12h",
+          "1d"
         ],
-        "title": "HistoryEventResponse"
-      },
-      "HistoryResponse": {
-        "properties": {
-          "date": {
-            "type": "string",
-            "format": "date",
-            "title": "Date"
-          },
-          "samples": {
-            "items": {
-              "$ref": "#/components/schemas/HourlySampleResponse"
-            },
-            "type": "array",
-            "title": "Samples"
-          },
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/HistoryEventResponse"
-            },
-            "type": "array",
-            "title": "Events"
-          }
-        },
-        "type": "object",
-        "required": [
-          "date",
-          "samples",
-          "events"
-        ],
-        "title": "HistoryResponse"
-      },
-      "HourlySampleResponse": {
-        "properties": {
-          "hour": {
-            "type": "string",
-            "title": "Hour",
-            "examples": [
-              "14:00"
-            ]
-          },
-          "state": {
-            "$ref": "#/components/schemas/AlertState"
-          },
-          "gas": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "h2": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "co": {
-            "$ref": "#/components/schemas/GasChannelResponse"
-          },
-          "tempC": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tempc"
-          },
-          "rh": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rh"
-          },
-          "presDev": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Presdev"
-          }
-        },
-        "type": "object",
-        "required": [
-          "hour",
-          "state",
-          "gas",
-          "h2",
-          "co"
-        ],
-        "title": "HourlySampleResponse"
+        "title": "Interval"
       },
       "LocationResponse": {
         "properties": {
@@ -941,124 +1413,201 @@
             "maximum": 180.0,
             "minimum": -180.0,
             "title": "Lon"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "이 좌표를 받은 시각 (UTC)"
           }
         },
         "type": "object",
         "required": [
           "lat",
-          "lon"
+          "lon",
+          "at"
         ],
         "title": "LocationResponse"
       },
-      "ModuleResponse": {
-        "properties": {
-          "nodeId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nodeid",
-            "examples": [
-              "44bd8d239c28"
-            ]
-          },
-          "seq": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Seq"
-          },
-          "battMv": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Battmv",
-            "description": "노드 배터리 전압 mV"
-          },
-          "rssi": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rssi",
-            "description": "수신 세기 dBm",
-            "examples": [
-              -74
-            ]
-          },
-          "snr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Snr"
-          },
-          "lastSeen": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lastseen",
-            "description": "마지막 프레임 수신 시각(UTC). 폴링 주기보다 갱신이 느리므로 앱은 이 값으로 데이터 나이를 표시해야 한다"
-          }
-        },
-        "type": "object",
-        "title": "ModuleResponse"
+      "NodeChannel": {
+        "type": "string",
+        "enum": [
+          "co",
+          "h2",
+          "voc",
+          "pressure",
+          "water"
+        ],
+        "title": "NodeChannel",
+        "description": "노드가 실제로 보내는 다섯 채널. 앱 화면 축(`Sensor`)과 다른 목록이다 —\n노드는 침수를 보내고 온습도는 보내지 않는다."
       },
-      "PressureResponse": {
+      "NodeResponse": {
         "properties": {
-          "presDev": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Presdev"
+          "mac": {
+            "type": "string",
+            "title": "Mac"
           },
-          "presRate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Presrate"
+          "state": {
+            "$ref": "#/components/schemas/AlertState"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "latched": {
+            "type": "boolean",
+            "title": "Latched",
+            "description": "경보 latch. 틱에서 한 번 걸리면 값을 내려도 풀리지 않고 리셋만 푼다"
+          },
+          "water": {
+            "type": "boolean",
+            "title": "Water"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelFlowResponse"
+            },
+            "type": "array",
+            "title": "Channels"
           }
         },
         "type": "object",
-        "title": "PressureResponse"
+        "required": [
+          "mac",
+          "state",
+          "conditions",
+          "latched",
+          "water",
+          "channels"
+        ],
+        "title": "NodeResponse"
+      },
+      "PeakChannelResponse": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "기준선 대비 상대 편차. 평소와 같으면 0",
+            "examples": [
+              3.1
+            ]
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope",
+            "description": "value의 분당 변화량",
+            "examples": [
+              2.4
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "이 값이 기간 중 최고치를 찍은 시각 (UTC)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at"
+        ],
+        "title": "PeakChannelResponse"
+      },
+      "PeriodPeaksResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기간 중 가장 심각했던 행동 단계. 관측이 없으면 null"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기간 중 도달한 가장 깊은 진행 단계. 판정 불가면 null"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array",
+            "title": "Conditions",
+            "description": "기간 중 나타난 원인들의 합집합"
+          },
+          "gas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeakChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "h2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeakChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "co": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeakChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pressure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeakChannelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "PeriodPeaksResponse"
       },
       "PushTokenRequest": {
         "properties": {
@@ -1092,87 +1641,97 @@
         ],
         "title": "PushTokenResponse"
       },
-      "SignatureResponse": {
+      "Sensor": {
+        "type": "string",
+        "enum": [
+          "gas",
+          "h2",
+          "co",
+          "pressure",
+          "temp",
+          "rh"
+        ],
+        "title": "Sensor"
+      },
+      "SensorCheck": {
+        "type": "string",
+        "enum": [
+          "OK",
+          "FAULT"
+        ],
+        "title": "SensorCheck",
+        "description": "센서를 믿을 수 있는가. 측정값이 무엇을 가리키는가와 다른 축이다.\n\n값이 오르는 것은 센서가 멀쩡하다는 뜻이지 고장이 아니다. 포화된 센서만\n못 믿는 상태다."
+      },
+      "SensorCheckResponse": {
         "properties": {
-          "rise": {
-            "type": "boolean",
-            "title": "Rise"
-          },
-          "hold": {
-            "type": "boolean",
-            "title": "Hold"
-          },
-          "noRecover": {
-            "type": "boolean",
-            "title": "Norecover"
-          },
-          "holdS": {
-            "type": "integer",
-            "title": "Holds",
-            "description": "시그니처 지속 초",
-            "examples": [
-              18
-            ]
+          "sensorCheck": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorCheck"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "센서를 믿을 수 있는가. 관측이 없으면 null"
+          }
+        },
+        "type": "object",
+        "title": "SensorCheckResponse"
+      },
+      "SensorDetailResponse": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/DetailBucketResponse"
+            },
+            "type": "array",
+            "title": "Buckets",
+            "description": "데이터가 있는 눈금 칸만. 빠진 칸이 곧 관측 공백이다"
           }
         },
         "type": "object",
         "required": [
-          "rise",
-          "hold",
-          "noRecover",
-          "holdS"
+          "buckets"
         ],
-        "title": "SignatureResponse",
-        "description": "판단 근거 3요소. 노드가 계산해 전송한다."
+        "title": "SensorDetailResponse"
       },
-      "TelemetryResponse": {
+      "SimulatorResponse": {
         "properties": {
-          "state": {
-            "$ref": "#/components/schemas/AlertState"
-          },
-          "latched": {
+          "running": {
             "type": "boolean",
-            "title": "Latched",
-            "description": "ALARM latch 유지 여부. 자동 해제 없음",
-            "default": false
+            "title": "Running"
           },
-          "gas": {
-            "$ref": "#/components/schemas/GasChannelResponse"
+          "tickSeconds": {
+            "type": "number",
+            "title": "Tickseconds",
+            "description": "틱 간격. 바꾸면 다음 틱부터 반영된다"
           },
-          "h2": {
-            "$ref": "#/components/schemas/GasChannelResponse"
+          "saturatedAt": {
+            "type": "number",
+            "title": "Saturatedat",
+            "description": "이 눈금에 닿으면 포화로 보고 센서 점검(FAULT)이 된다"
           },
-          "co": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GasChannelResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "env": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EnvResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "pressure": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PressureResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "water": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeResponse"
+            },
+            "type": "array",
+            "title": "Nodes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "running",
+          "tickSeconds",
+          "saturatedAt",
+          "nodes"
+        ],
+        "title": "SimulatorResponse"
+      },
+      "SimulatorTuneRequest": {
+        "properties": {
+          "running": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -1181,40 +1740,39 @@
                 "type": "null"
               }
             ],
-            "title": "Water"
+            "title": "Running",
+            "description": "틱 발신 여부. null이면 지금 값을 유지한다"
           },
-          "signature": {
+          "tickSeconds": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SignatureResponse"
+                "type": "number",
+                "maximum": 600.0,
+                "exclusiveMinimum": 0.1
               },
               {
                 "type": "null"
               }
-            ]
-          },
-          "location": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LocationResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "module": {
-            "$ref": "#/components/schemas/ModuleResponse"
+            ],
+            "title": "Tickseconds",
+            "description": "틱 간격. null이면 지금 값을 유지한다"
           }
         },
+        "additionalProperties": false,
         "type": "object",
-        "required": [
-          "state",
-          "gas",
-          "h2",
-          "module"
+        "title": "SimulatorTuneRequest"
+      },
+      "Stage": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "TEMP_RISE",
+          "GAS_LEAK",
+          "RAPID_WORSENING",
+          "IGNITION"
         ],
-        "title": "TelemetryResponse"
+        "title": "Stage",
+        "description": "화재로 가는 진행 단계. 값의 나열 순서가 곧 진행 순서다.\n\nCondition이 \"무엇이 일어나는가\"를 순서 없이 모아둔 것이라면, Stage는\n\"어디까지 왔는가\"를 하나로 답한다. 앱 화면은 이 단계까지 칸을 채운다."
       },
       "ValidationError": {
         "properties": {
@@ -1255,12 +1813,6 @@
           "type"
         ],
         "title": "ValidationError"
-      }
-    },
-    "securitySchemes": {
-      "HTTPBearer": {
-        "type": "http",
-        "scheme": "bearer"
       }
     }
   }

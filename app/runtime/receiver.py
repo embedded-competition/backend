@@ -1,95 +1,138 @@
-"""LoRa 수신 루프.
-
-lifespan에서 뜬 장수 asyncio task. 프레임 1건 실패가 루프를 죽이지 않는다.
-저장은 IngestService, 발송은 NotificationService가 하고 이 모듈은 흐름만 잇는다.
-"""
-
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.ingest_service import IngestOutcome, IngestService
 from app.core.notification_service import NotificationService
-from app.domain.exceptions import DeviceInactive, DeviceNotRegistered, FrameError
-from app.domain.ports import FrameSource, RawFrame
+from app.domain.alerting import Alert
+from app.domain.device import Device
+from app.domain.exceptions import DeviceInactive, FrameError
+from app.domain.frames import TelemetryFrame
+from app.domain.ports.frame_source import FrameSource, RawFrame
 from app.infrastructure.lora.frame import parse_frame
 from app.infrastructure.lora.stats import ReceiveStats
 
 logger = logging.getLogger(__name__)
 
-_REPORT_EVERY = 50
-
 SessionScope = Callable[[], AbstractContextManager[Session]]
 IngestFactory = Callable[[Session], IngestService]
 NotifierFactory = Callable[[Session], NotificationService]
+FrameParser = Callable[[RawFrame], TelemetryFrame]
 
 
+def parse_wire_frame(raw: RawFrame) -> TelemetryFrame:
+    return parse_frame(raw.payload, raw.received_at)
+
+
+def _frame_fields(frame: TelemetryFrame, raw: RawFrame) -> dict[str, object]:
+    """한 프레임을 되짚는 데 필요한 것만 — 무엇이, 어디서, 얼마나 세게 왔는가."""
+    fields: dict[str, object] = {
+        "hw_id": str(frame.hw_id),
+        "rssi": raw.rssi,
+        "snr": raw.snr,
+        "bytes": len(raw.payload),
+    }
+    fields.update({measure.value: value for measure, value in frame.values.items()})
+    return fields
+
+
+@dataclass(slots=True, kw_only=True)
 class FrameReceiver:
-    def __init__(
-        self,
-        *,
-        source: FrameSource,
-        session_scope: SessionScope,
-        ingest_factory: IngestFactory,
-        notifier_factory: NotifierFactory,
-        on_frame: Callable[[RawFrame], None] | None = None,
-    ) -> None:
-        self._source = source
-        self._session_scope = session_scope
-        self._ingest_factory = ingest_factory
-        self._notifier_factory = notifier_factory
-        self._on_frame = on_frame
-        self.stats = ReceiveStats()
+    source: FrameSource
+    session_scope: SessionScope
+    ingest_factory: IngestFactory
+    notifier_factory: NotifierFactory
+    parse: FrameParser = parse_wire_frame
+    on_frame: Callable[[RawFrame], None] | None = None
+    stats: ReceiveStats = field(default_factory=ReceiveStats)
+    report_every: timedelta = timedelta(minutes=10)
+    """수신 통계를 남기는 간격. 개수가 아니라 시간이다 — 이유는 ReceiveStats에 적었다."""
+    silence_report_s: float = 60.0
+    label: str = "lora"
+    """로그에서 이 수신기를 가리키는 이름.
+
+    수신기가 둘 이상 돌면 같은 문장이 두 번 나오고, 어느 쪽이 조용한지 구별할 수
+    없다. 무선의 침묵과 시뮬레이터의 정지는 뜻이 전혀 다르다.
+    """
 
     async def run(self) -> None:
-        """취소될 때까지 돈다. 예외로 조용히 멈추지 않는 게 이 루프의 계약이다."""
+        watchdog = asyncio.create_task(self._watch_silence(), name="lora-silence")
         try:
-            async for raw in self._source.frames():
+            async for raw in self.source.frames():
                 self.stats.received += 1
-                if self._on_frame is not None:
-                    self._on_frame(raw)
+                if self.on_frame is not None:
+                    self.on_frame(raw)
                 await self._handle(raw)
-                if self.stats.should_report(_REPORT_EVERY):
-                    logger.info("lora receive stats", extra=self.stats.as_dict())
+                if self.stats.should_report(raw.received_at, self.report_every):
+                    logger.info("receive stats", extra=self._reported())
         except asyncio.CancelledError:
-            # 정리 후 재전파 — 삼키면 서비스가 안 내려간다.
-            logger.info("lora receiver cancelled", extra=self.stats.as_dict())
+            logger.info("receiver cancelled", extra=self._reported())
             raise
         finally:
-            await self._source.close()
+            watchdog.cancel()
+            await asyncio.gather(watchdog, return_exceptions=True)
+            await self.source.close()
+
+    async def _watch_silence(self) -> None:
+        """수신이 없으면 로그도 없다 — 조용한 것과 죽은 것이 구별되지 않는다.
+
+        주파수·SF가 한쪽만 어긋나면 수신이 0이 되는데, 0은 에러가 아니라 침묵이라
+        아무 흔적을 남기지 않는다. 살아 있다는 사실과 얼마나 조용한지를 직접 말한다.
+        """
+        seen = self.stats.received
+        silent_ticks = 0
+        while True:
+            await asyncio.sleep(self.silence_report_s)
+            if self.stats.received != seen:
+                seen = self.stats.received
+                silent_ticks = 0
+                continue
+            silent_ticks += 1
+            logger.warning(
+                "receiver silent",
+                extra={
+                    "silent_s": round(silent_ticks * self.silence_report_s),
+                    **self._reported(),
+                },
+            )
 
     async def _handle(self, raw: RawFrame) -> None:
         try:
             outcome = self._store(raw)
         except FrameError as exc:
             self._count_frame_error(exc)
-            # 무선 경로는 재현이 어렵다 — 원본 hex가 유일한 증거다.
             logger.warning(
                 "frame rejected",
-                extra={"code": exc.code, "payload": raw.payload.hex()},
+                extra={"receiver": self.label, "code": exc.code, "payload": raw.payload.hex()},
             )
             return
-        except (DeviceNotRegistered, DeviceInactive) as exc:
+        except DeviceInactive as exc:
             self.stats.unknown_device += 1
-            logger.warning("frame from unknown device", extra={"code": exc.code})
+            logger.warning(
+                "frame from inactive device",
+                extra={"receiver": self.label, "code": exc.code},
+            )
             return
         except Exception:
-            # 한 프레임 실패가 수신을 멈추게 하지 않는다.
             logger.exception("frame handling failed")
             return
 
-        if outcome is not None and outcome.needs_dispatch:
-            await self._dispatch(outcome)
+        if outcome is not None and outcome.needs_dispatch and outcome.alert is not None:
+            await self._dispatch(outcome.alert, outcome.device)
 
     def _store(self, raw: RawFrame) -> IngestOutcome | None:
-        frame = parse_frame(raw.payload)
-        with self._session_scope() as session:
-            outcome = self._ingest_factory(session).ingest(frame, raw)
+        frame = self.parse(raw)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("frame received", extra=_frame_fields(frame, raw))
+        with self.session_scope() as session:
+            outcome = self.ingest_factory(session).ingest(frame, raw)
         if outcome.duplicate:
             self.stats.duplicate += 1
             return None
@@ -99,18 +142,16 @@ class FrameReceiver:
             self.stats.alerts += 1
         return outcome
 
-    async def _dispatch(self, outcome: IngestOutcome) -> None:
-        """저장 커밋 이후에만 호출된다 (롤백 시 유령 알림 방지)."""
-        assert outcome.alert is not None
+    async def _dispatch(self, alert: Alert, device: Device) -> None:
         try:
-            with self._session_scope() as session:
-                report = await self._notifier_factory(session).dispatch(
-                    outcome.alert, outcome.device
-                )
-            logger.info("alert dispatched", extra=report.__dict__)
+            with self.session_scope() as session:
+                report = await self.notifier_factory(session).dispatch(alert, device)
+            logger.info("alert dispatched", extra=report.as_dict())
         except Exception:
-            # 발송 실패가 측정값 저장을 되돌리지 않는다.
             logger.exception("alert dispatch failed")
+
+    def _reported(self) -> dict[str, object]:
+        return {"receiver": self.label, **self.stats.as_dict()}
 
     def _count_frame_error(self, exc: FrameError) -> None:
         if exc.code == "frame_crc_error":

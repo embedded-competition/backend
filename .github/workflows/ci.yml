@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # deploy.yml이 태그 커밋 기준으로 같은 게이트를 다시 돌린다.
+  # 배포 전용 체크를 따로 만들지 않는다.
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: install
+        run: uv sync --locked
+
+      # 로컬과 같은 타깃을 부른다. CI 전용 명령을 만들지 않는다.
+      - name: check
+        run: make check
+
+      # 앱 팀과의 계약. 스펙이 바뀌었는데 재생성을 안 한 PR을 여기서 막는다.
+      - name: openapi drift
+        run: make openapi
+
+      # 런타임 의존만으로 앱이 조립되는지 확인한다. dev group에 섞여 들어간
+      # 런타임 의존은 로컬에서 절대 드러나지 않는다.
+      - name: production install boots
+        run: |
+          uv sync --locked --no-dev
+          uv run --no-dev python -c "from app.main import create_app; create_app(); print('boot ok')"
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: make contract

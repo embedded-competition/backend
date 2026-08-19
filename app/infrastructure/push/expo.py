@@ -1,5 +1,3 @@
-"""Expo Push 어댑터. firebase/expo SDK import가 이 폴더 밖으로 나가지 않는다."""
-
 from __future__ import annotations
 
 import logging
@@ -7,14 +5,14 @@ from typing import Any
 
 import httpx
 
-from app.domain.models import Alert, Device
-from app.domain.ports import PushResult
+from app.domain.alerting import Alert
+from app.domain.device import Device
+from app.domain.ports.push_sender import PushResult
 from app.infrastructure.push import messages
 
 logger = logging.getLogger(__name__)
 
 _ENDPOINT = "https://exp.host/--/api/v2/push/send"
-# 토큰이 죽은 경우 — 재시도하지 않고 비활성화한다.
 _PERMANENT_ERRORS = frozenset({"DeviceNotRegistered", "InvalidCredentials"})
 
 
@@ -39,7 +37,6 @@ class ExpoPushSender:
             response.raise_for_status()
             return _interpret(response.json())
         except httpx.HTTPError as exc:
-            # 네트워크·5xx는 일시적 실패로 본다 — 재시도 대상.
             logger.warning("expo push failed", extra={"error": type(exc).__name__})
             return PushResult(delivered=False, error_code=type(exc).__name__)
         finally:
@@ -62,8 +59,6 @@ def _interpret(body: dict[str, Any]) -> PushResult:
 
 
 class LoggingPushSender:
-    """실기기·자격증명 없이 알람 흐름을 검증하기 위한 구현."""
-
     async def send(self, *, token: str, alert: Alert, device: Device) -> PushResult:
         message = messages.build(alert, device)
         logger.info(
@@ -78,6 +73,8 @@ class LoggingPushSender:
         return PushResult(delivered=True)
 
 
+_MASKABLE_LENGTH = 20
+
+
 def _mask(token: str) -> str:
-    """토큰은 비밀값이다 — 전체를 로그에 남기지 않는다."""
-    return f"{token[:12]}…{token[-4:]}" if len(token) > 20 else "…"
+    return f"{token[:12]}…{token[-4:]}" if len(token) > _MASKABLE_LENGTH else "…"
