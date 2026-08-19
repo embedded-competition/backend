@@ -5,6 +5,7 @@ import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
@@ -51,7 +52,8 @@ class FrameReceiver:
     parse: FrameParser = parse_wire_frame
     on_frame: Callable[[RawFrame], None] | None = None
     stats: ReceiveStats = field(default_factory=ReceiveStats)
-    report_every: int = 10
+    report_every: timedelta = timedelta(minutes=10)
+    """수신 통계를 남기는 간격. 개수가 아니라 시간이다 — 이유는 ReceiveStats에 적었다."""
     silence_report_s: float = 60.0
     label: str = "lora"
     """로그에서 이 수신기를 가리키는 이름.
@@ -68,7 +70,7 @@ class FrameReceiver:
                 if self.on_frame is not None:
                     self.on_frame(raw)
                 await self._handle(raw)
-                if self.stats.should_report(self.report_every):
+                if self.stats.should_report(raw.received_at, self.report_every):
                     logger.info("receive stats", extra=self._reported())
         except asyncio.CancelledError:
             logger.info("receiver cancelled", extra=self._reported())

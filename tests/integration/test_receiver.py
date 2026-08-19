@@ -110,13 +110,15 @@ def _receiver(
     )
 
 
-def _scenario_frames(count: int, now: datetime) -> list[RawFrame]:
+def _scenario_frames(
+    count: int, now: datetime, *, apart: timedelta = timedelta(seconds=1)
+) -> list[RawFrame]:
     """수신 시각이 판독을 가르는 유일한 축이다 — 노드가 seq를 보내지 않는다."""
     factory = ScenarioFrameFactory(HW_ID)
     return [
         RawFrame(
             payload=build_frame(factory.build(step)),
-            received_at=now + timedelta(seconds=step),
+            received_at=now + apart * step,
             rssi=-74,
             snr=7.0,
         )
@@ -318,7 +320,7 @@ class TestObservability:
         assert received[0].hw_id == HW_ID  # type: ignore[attr-defined]
         assert received[0].rssi == -74  # type: ignore[attr-defined]
 
-    async def test_stats_are_reported_before_the_demo_ends(
+    async def test_stats_are_reported_once_the_interval_passes(
         self,
         session_factory: sessionmaker[Session],
         sender: RecordingPushSender,
@@ -326,14 +328,36 @@ class TestObservability:
         now: datetime,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """heartbeat 60초 기준으로 첫 요약이 10분 안에 나와야 쓸모가 있다."""
-        receiver = _receiver(session_factory, sender, _scenario_frames(10, now))
+        frames = _scenario_frames(25, now, apart=timedelta(minutes=1))
+        receiver = _receiver(session_factory, sender, frames)
 
         with caplog.at_level(logging.INFO, logger="app.runtime.receiver"):
             await receiver.run()
 
-        assert receiver.report_every == 10
-        assert [r for r in caplog.records if r.getMessage() == "receive stats"]
+        reports = [r for r in caplog.records if r.getMessage() == "receive stats"]
+        assert receiver.report_every == timedelta(minutes=10)
+        assert len(reports) == 2
+
+    async def test_a_fast_source_does_not_flood_the_log(
+        self,
+        session_factory: sessionmaker[Session],
+        sender: RecordingPushSender,
+        registered: Device,
+        now: datetime,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """개수로 끊으면 초당 여러 장을 내는 소스가 로그를 덮는다.
+
+        시뮬레이터가 그렇다. 요약 한 줄이 몇 초마다 나오면 정작 읽어야 하는
+        무선 침묵 경고가 그 사이에 파묻힌다.
+        """
+        frames = _scenario_frames(200, now, apart=timedelta(milliseconds=600))
+        receiver = _receiver(session_factory, sender, frames)
+
+        with caplog.at_level(logging.INFO, logger="app.runtime.receiver"):
+            await receiver.run()
+
+        assert not [r for r in caplog.records if r.getMessage() == "receive stats"]
 
 
 class _WakeOnMessage(logging.Handler):
