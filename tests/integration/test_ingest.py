@@ -13,7 +13,7 @@ from app.domain.device import Device
 from app.domain.frames import TelemetryFrame
 from app.domain.measurements import Measure
 from app.domain.ports.frame_source import RawFrame
-from app.domain.value_objects import AlertState, DeviceId, Period
+from app.domain.value_objects import AlertState, DeviceId, GasChannel, Period
 from app.infrastructure.clock import SystemClock
 from app.infrastructure.db.repositories.alerts import SqlAlchemyAlertRepository
 from app.infrastructure.db.repositories.devices import SqlAlchemyDeviceRepository
@@ -193,6 +193,66 @@ class TestTransition:
 
         assert outcome.alert is not None
         assert outcome.needs_dispatch is False
+
+
+class TestDerivedSlope:
+    """노드가 기울기를 안 보내므로 서버가 직전 관측과 견줘 채운다."""
+
+    def _rising(self, at: datetime, co: float) -> TelemetryFrame:
+        return replace(
+            _frame(1, AlertState.NORMAL, at),
+            values={Measure.CO_DEV: co},
+        )
+
+    def test_first_frame_stores_no_slope(
+        self, ingest: IngestService, session: Session, registered: Device, now: datetime
+    ) -> None:
+        ingest.ingest(self._rising(now, 100.0), _raw(now))
+
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
+
+        assert stored is not None
+        assert stored.value(Measure.CO_SLOPE) is None
+
+    def test_second_frame_stores_the_rate_since_the_first(
+        self, ingest: IngestService, session: Session, registered: Device, now: datetime
+    ) -> None:
+        later = now + timedelta(seconds=30)
+        ingest.ingest(self._rising(now, 100.0), _raw(now))
+        ingest.ingest(self._rising(later, 160.0), _raw(later))
+
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
+
+        assert stored is not None
+        assert stored.value(Measure.CO_SLOPE) == pytest.approx(120.0)
+
+    def test_the_rate_survives_the_round_trip_into_the_channel_view(
+        self, ingest: IngestService, session: Session, registered: Device, now: datetime
+    ) -> None:
+        """앱이 읽는 것은 channel(value, slope)다 — 컬럼에 남아야 거기까지 간다."""
+        later = now + timedelta(minutes=1)
+        ingest.ingest(self._rising(now, 100.0), _raw(now))
+        ingest.ingest(self._rising(later, 130.0), _raw(later))
+
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
+
+        assert stored is not None
+        channel = stored.channel(GasChannel.CO)
+        assert channel is not None
+        assert channel.deviation == pytest.approx(130.0)
+        assert channel.slope == pytest.approx(30.0)
+
+    def test_a_gap_past_the_window_leaves_the_slope_empty(
+        self, ingest: IngestService, session: Session, registered: Device, now: datetime
+    ) -> None:
+        stale = now + timedelta(minutes=30)
+        ingest.ingest(self._rising(now, 100.0), _raw(now))
+        ingest.ingest(self._rising(stale, 900.0), _raw(stale))
+
+        stored = SqlAlchemyReadingRepository(session).latest(registered.key)
+
+        assert stored is not None
+        assert stored.value(Measure.CO_SLOPE) is None
 
 
 class TestStoredFields:

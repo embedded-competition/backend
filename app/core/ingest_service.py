@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from app.core import identity
 from app.core.descriptions import describe_transition
@@ -39,11 +40,18 @@ class IngestService:
     events: SqlAlchemyEventRepository
     clock: Clock
     default_management_phone: str | None = None
+    slope_window: timedelta = timedelta(minutes=15)
+    """이 간격 안에 들어온 직전 관측까지만 변화율의 근거로 삼는다.
+
+    기기가 offline으로 판정될 만큼 조용했다면 그 침묵을 가로질러 두 점을 잇는 것은
+    변화율이 아니다. 기본값은 그 판정 임계(heartbeat의 3배)와 같게 맞춘다.
+    """
 
     def ingest(self, frame: TelemetryFrame, raw: RawFrame) -> IngestOutcome:
         if frame.hw_id is None:
             raise FrameFieldError("hw_id 없는 프레임은 소유 기기를 특정할 수 없다")
         device = self._resolve_device(frame.hw_id)
+        frame = self._with_slopes(device, frame)
         received = _to_reading(device, frame, raw)
 
         stored = self.readings.add_if_absent(received)
@@ -62,6 +70,17 @@ class IngestService:
             duplicate=False,
             missed_frames=missed,
             alert=alert,
+        )
+
+    def _with_slopes(self, device: Device, frame: TelemetryFrame) -> TelemetryFrame:
+        """노드가 안 보내는 기울기를 직전 관측과 견줘 채운다.
+
+        저장 직전에 한 번만 한다. 조회할 때마다 계산하면 같은 값을 여러 경로가
+        저마다 다시 유도하게 되고, 최고치·차트는 컬럼을 읽으므로 아예 못 본다.
+        """
+        previous = self.readings.latest(device.key)
+        return frame.with_slopes_since(
+            previous.frame if previous is not None else None, within=self.slope_window
         )
 
     def _resolve_device(self, hw_id: DeviceId) -> Device:

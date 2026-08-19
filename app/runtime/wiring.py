@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
+from datetime import timedelta
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -46,6 +47,7 @@ def ingest_factory(settings: Settings) -> Callable[[Session], IngestService]:
             events=SqlAlchemyEventRepository(session),
             clock=SystemClock(),
             default_management_phone=settings.management_phone,
+            slope_window=timedelta(seconds=settings.offline_threshold_s),
         )
 
     return build
